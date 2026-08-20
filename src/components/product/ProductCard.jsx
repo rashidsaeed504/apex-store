@@ -4,8 +4,7 @@ import { Heart, Star } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
 import { useToast } from '../../context/ToastContext';
-import { formatPrice, WHATSAPP_NUMBER } from '../../utils/helpers';
-import { WhatsAppIcon } from '../ui/SocialIcons';
+import { formatPrice } from '../../utils/helpers';
 
 export default function ProductCard({ product, className = '', disableMotion = false }) {
   const { addToCart } = useCart();
@@ -42,15 +41,6 @@ export default function ProductCard({ product, className = '', disableMotion = f
         success(`${product.name || 'Product'} added to wishlist`);
       }
     }
-  };
-
-  const handleWhatsAppOrder = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const productUrl = `${window.location.origin}/product/${productSlug}`;
-    const message = `Hello APEX Store, I want to order:\n\nProduct: ${product.name || 'APEX Product'}\n\nPrice: ${formatPrice(product.price)}\n\nProduct Link: ${productUrl}\n\nPlease confirm availability and delivery details.`;
-    const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
   };
 
   const cardContent = (
@@ -149,17 +139,6 @@ export default function ProductCard({ product, className = '', disableMotion = f
       >
         {isOutOfStock ? 'OUT OF STOCK' : 'ADD TO CART'}
       </button>
-
-      {/* WhatsApp Order Button */}
-      {!isOutOfStock && (
-        <button
-          onClick={handleWhatsAppOrder}
-          className="w-full py-2 sm:py-3 border-t border-white/5 uppercase text-[10px] sm:text-sm font-semibold tracking-wider transition-all bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white flex items-center justify-center gap-1.5 active:scale-[0.98]"
-        >
-          <WhatsAppIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          WHATSAPP ORDER
-        </button>
-      )}
     </>
   );
 

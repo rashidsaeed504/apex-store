@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Mail,
@@ -61,14 +60,56 @@ export default function SignUp() {
   const { signUp, signInWithGoogle, user } = useAuth();
   const { success, error: toastError } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const getDestination = () => {
+    // 1. Check router location state
+    const from = location.state?.from;
+    if (typeof from === 'string' && from.startsWith('/') && !from.includes('/login') && !from.includes('/auth') && !from.includes('/signup')) {
+      return from;
+    }
+    if (from?.pathname && typeof from.pathname === 'string' && from.pathname.startsWith('/') && !from.pathname.includes('/login') && !from.pathname.includes('/auth') && !from.pathname.includes('/signup')) {
+      return from.pathname;
+    }
+
+    // 2. Check URL search query parameter (?redirect= or ?from=)
+    try {
+      const searchParams = new URLSearchParams(location.search);
+      const qRedirect = searchParams.get('redirect') || searchParams.get('from');
+      if (qRedirect && qRedirect.startsWith('/') && !qRedirect.includes('/login') && !qRedirect.includes('/auth') && !qRedirect.includes('/signup')) {
+        return qRedirect;
+      }
+    } catch (e) {}
+
+    // 3. Check temporary sessionStorage redirect
+    try {
+      const stored = sessionStorage.getItem('apex_auth_redirect');
+      if (stored && stored.startsWith('/') && !stored.includes('/login') && !stored.includes('/auth') && !stored.includes('/signup')) {
+        return stored;
+      }
+    } catch (e) {}
+
+    return '/account';
+  };
 
   useEffect(() => {
     document.title = "Create Customer Account | APEX Store";
     window.scrollTo(0, 0);
-    if (user) {
-      navigate("/account", { replace: true });
+
+    const dest = getDestination();
+    if (dest && dest !== '/account') {
+      try {
+        sessionStorage.setItem('apex_auth_redirect', dest);
+      } catch (e) {}
     }
-  }, [user, navigate]);
+
+    if (user) {
+      try {
+        sessionStorage.removeItem('apex_auth_redirect');
+      } catch (e) {}
+      navigate(dest, { replace: true });
+    }
+  }, [user, navigate, location]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -131,12 +172,18 @@ export default function SignUp() {
 
       success(messageText);
 
-      // Immediately redirect to LOGIN page with state message and pre-filled email
+      const dest = getDestination();
+      try {
+        sessionStorage.setItem('apex_auth_redirect', dest);
+      } catch (e) {}
+
+      // Immediately redirect to LOGIN page with state message, pre-filled email and preserved destination
       navigate("/login", {
         replace: true,
         state: {
           message: messageText,
           registeredEmail: formData.email.trim(),
+          from: dest,
         },
       });
     } catch (err) {
@@ -157,7 +204,11 @@ export default function SignUp() {
     setErrorMsg("");
     setGoogleLoading(true);
     try {
-      await signInWithGoogle("/account");
+      const destination = getDestination();
+      try {
+        sessionStorage.setItem('apex_auth_redirect', destination);
+      } catch (e) {}
+      await signInWithGoogle(destination);
     } catch (err) {
       console.warn("Google OAuth error:", err);
       const msg = err.message || "Failed to start Google registration. Please try again.";
@@ -438,6 +489,7 @@ export default function SignUp() {
             Already have an APEX account?{" "}
             <Link
               to="/login"
+              state={{ from: getDestination() }}
               className="text-apex-red font-bold hover:underline ml-1"
             >
               Sign In

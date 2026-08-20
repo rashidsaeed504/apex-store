@@ -13,10 +13,11 @@ import {
   ExternalLink,
   ShieldCheck,
   User,
+  RotateCcw,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { fetchMyOrders } from "../../services/api";
-import { formatPrice } from "../../utils/helpers";
+import { formatPrice, safeParseItems } from "../../utils/helpers";
 
 export default function AccountDashboard() {
   const { user, profile, addresses } = useAuth();
@@ -205,11 +206,8 @@ export default function AccountDashboard() {
         ) : (
           <div className="space-y-2.5 sm:space-y-3">
             {recentOrders.map((order) => {
-              const items = Array.isArray(order.items)
-                ? order.items
-                : typeof order.items === "string"
-                  ? JSON.parse(order.items)
-                  : [];
+              if (!order) return null;
+              const items = safeParseItems(order.items);
               const dateStr = order.created_at
                 ? new Date(order.created_at).toLocaleDateString("en-US", {
                     month: "short",
@@ -226,7 +224,7 @@ export default function AccountDashboard() {
                   <div className="space-y-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono font-black text-xs sm:text-sm text-white">
-                        #{order.order_number}
+                        #{order.order_number || String(order.id || 'N/A')}
                       </span>
                       <span
                         className={`text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadge(order.status)}`}
@@ -239,7 +237,7 @@ export default function AccountDashboard() {
                       {dateStr}
                     </p>
                     <p className="text-[11px] text-gray-500 truncate max-w-xs sm:max-w-md">
-                      {items.map((it) => it.name).join(", ")}
+                      {items.map((it) => it?.name || 'Product').join(", ")}
                     </p>
                   </div>
 
@@ -341,6 +339,22 @@ export default function AccountDashboard() {
                 <p className="text-[10px] text-gray-500">
                   Track and view invoices
                 </p>
+              </div>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 text-gray-500" />
+          </Link>
+
+          <Link
+            to="/account/returns"
+            className="flex items-center justify-between p-3 bg-[#121212] hover:bg-white/5 border border-white/5 rounded-xl text-xs text-gray-300 hover:text-white transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center text-purple-400 shrink-0">
+                <RotateCcw className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <p className="font-bold text-white text-xs">Returns & Refunds</p>
+                <p className="text-[10px] text-gray-500">Track claim lifecycle</p>
               </div>
             </div>
             <ArrowRight className="w-3.5 h-3.5 text-gray-500" />

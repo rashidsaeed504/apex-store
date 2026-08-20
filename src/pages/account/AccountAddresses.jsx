@@ -5,9 +5,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 
 export default function AccountAddresses() {
-  const { addresses, addAddress, updateAddress, deleteAddress, setDefaultAddress } = useAuth();
+  const { addresses = [], addAddress, updateAddress, deleteAddress, setDefaultAddress } = useAuth();
   const { success, error: toastError } = useToast();
 
+  const safeAddresses = Array.isArray(addresses) ? addresses : [];
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
@@ -32,7 +33,7 @@ export default function AccountAddresses() {
     setEditingId(null);
     setFormData({
       ...initialForm,
-      isDefault: addresses.length === 0,
+      isDefault: safeAddresses.length === 0,
     });
     setIsModalOpen(true);
   };
@@ -109,7 +110,7 @@ export default function AccountAddresses() {
       </motion.div>
 
       {/* Address Cards Grid */}
-      {addresses.length === 0 ? (
+      {safeAddresses.length === 0 ? (
         <div className="bg-[#0D0D0D] border border-white/10 rounded-2xl sm:rounded-3xl p-8 sm:p-10 text-center">
           <MapPin className="w-10 h-10 text-gray-600 mx-auto mb-2.5" />
           <h3 className="text-sm font-bold uppercase text-white mb-1">No Addresses Saved</h3>
@@ -125,7 +126,7 @@ export default function AccountAddresses() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-          {addresses.map((addr) => (
+          {safeAddresses.map((addr) => (
             <motion.div
               key={addr.id}
               initial={{ opacity: 0, y: 10 }}

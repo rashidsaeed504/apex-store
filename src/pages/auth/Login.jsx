@@ -52,12 +52,52 @@ export default function Login() {
   const { success, error: toastError } = useToast();
   const navigate = useNavigate();
 
+  const getDestination = () => {
+    // 1. Check router location state
+    const from = location.state?.from;
+    if (typeof from === 'string' && from.startsWith('/') && !from.includes('/login') && !from.includes('/auth') && !from.includes('/signup')) {
+      return from;
+    }
+    if (from?.pathname && typeof from.pathname === 'string' && from.pathname.startsWith('/') && !from.pathname.includes('/login') && !from.pathname.includes('/auth') && !from.pathname.includes('/signup')) {
+      return from.pathname;
+    }
+
+    // 2. Check URL search query parameter (?redirect= or ?from=)
+    try {
+      const searchParams = new URLSearchParams(location.search);
+      const qRedirect = searchParams.get('redirect') || searchParams.get('from');
+      if (qRedirect && qRedirect.startsWith('/') && !qRedirect.includes('/login') && !qRedirect.includes('/auth') && !qRedirect.includes('/signup')) {
+        return qRedirect;
+      }
+    } catch (e) {}
+
+    // 3. Check temporary sessionStorage redirect
+    try {
+      const stored = sessionStorage.getItem('apex_auth_redirect');
+      if (stored && stored.startsWith('/') && !stored.includes('/login') && !stored.includes('/auth') && !stored.includes('/signup')) {
+        return stored;
+      }
+    } catch (e) {}
+
+    return '/account';
+  };
+
   useEffect(() => {
     document.title = "Customer Login | APEX Store";
     window.scrollTo(0, 0);
+
+    const dest = getDestination();
+    if (dest && dest !== '/account') {
+      try {
+        sessionStorage.setItem('apex_auth_redirect', dest);
+      } catch (e) {}
+    }
+
     if (user) {
-      const from = location.state?.from?.pathname || "/account";
-      navigate(from, { replace: true });
+      try {
+        sessionStorage.removeItem('apex_auth_redirect');
+      } catch (e) {}
+      navigate(dest, { replace: true });
     }
   }, [user, navigate, location]);
 
@@ -76,9 +116,12 @@ export default function Login() {
     setSubmitting(true);
     try {
       await signIn({ email: cleanEmail, password });
+      const dest = getDestination();
+      try {
+        sessionStorage.removeItem('apex_auth_redirect');
+      } catch (e) {}
       success("Logged in successfully! Welcome back.");
-      const from = location.state?.from?.pathname || "/account";
-      navigate(from, { replace: true });
+      navigate(dest, { replace: true });
     } catch (err) {
       console.warn("Customer login error:", err);
       let msg =
@@ -101,7 +144,10 @@ export default function Login() {
     setSuccessMsg("");
     setGoogleLoading(true);
     try {
-      const destination = location.state?.from?.pathname || "/account";
+      const destination = getDestination();
+      try {
+        sessionStorage.setItem('apex_auth_redirect', destination);
+      } catch (e) {}
       await signInWithGoogle(destination);
     } catch (err) {
       console.warn("Google OAuth initialization error:", err);
@@ -280,6 +326,7 @@ export default function Login() {
             Don't have an APEX account yet?{" "}
             <Link
               to="/signup"
+              state={{ from: getDestination() }}
               className="text-apex-red font-bold hover:underline ml-1"
             >
               Create Account

@@ -7,11 +7,13 @@ import {
   MapPin,
   Star,
   User,
+  RotateCcw,
   LogOut,
   ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import AccountErrorBoundary from "../../components/account/AccountErrorBoundary";
 
 export default function AccountLayout() {
   const { user, profile, signOut } = useAuth();
@@ -27,6 +29,7 @@ export default function AccountLayout() {
   const navItems = [
     { name: "Overview", path: "/account", icon: LayoutDashboard, end: true },
     { name: "Orders", path: "/account/orders", icon: Package },
+    { name: "Returns", path: "/account/returns", icon: RotateCcw },
     { name: "Addresses", path: "/account/addresses", icon: MapPin },
     { name: "Reviews", path: "/account/reviews", icon: Star },
     { name: "Profile", path: "/account/profile", icon: User },
@@ -172,7 +175,9 @@ export default function AccountLayout() {
 
           {/* Main Content Area */}
           <div className="md:col-span-8 lg:col-span-9">
-            <Outlet />
+            <AccountErrorBoundary>
+              <Outlet />
+            </AccountErrorBoundary>
           </div>
         </div>
       </div>

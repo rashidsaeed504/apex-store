@@ -176,6 +176,7 @@ const setLocalProducts = (list) => {
 };
 
 const getLocalOrders = () => {
+  if (typeof localStorage === 'undefined') return [];
   const stored = localStorage.getItem(LOCAL_ORDERS_KEY);
   if (stored) {
     try { return JSON.parse(stored); } catch (e) { console.error(e); }
@@ -184,6 +185,7 @@ const getLocalOrders = () => {
 };
 
 const setLocalOrders = (list) => {
+  if (typeof localStorage === 'undefined') return;
   localStorage.setItem(LOCAL_ORDERS_KEY, JSON.stringify(list));
 };
 
@@ -475,6 +477,8 @@ export async function saveGlobalSupabaseCMSConfig(partialConfig) {
       banners: partialConfig.banners !== undefined ? partialConfig.banners : (existing?.banners || []),
       special_offer: partialConfig.special_offer !== undefined ? partialConfig.special_offer : (existing?.special_offer || null),
       social_gallery: partialConfig.social_gallery !== undefined ? partialConfig.social_gallery : (existing?.social_gallery || []),
+      return_settings: partialConfig.return_settings !== undefined ? partialConfig.return_settings : (existing?.return_settings || null),
+      returns: partialConfig.returns !== undefined ? partialConfig.returns : (existing?.returns || []),
       updated_at: new Date().toISOString(),
     };
 
@@ -1183,6 +1187,7 @@ export function getStoredGuestTokensList() {
 }
 
 export function getStoredGuestOrders() {
+  if (typeof localStorage === 'undefined') return [];
   try {
     const raw = localStorage.getItem('apex_guest_order_tokens');
     if (!raw) return [];
@@ -1194,7 +1199,7 @@ export function getStoredGuestOrders() {
 }
 
 export function saveGuestOrderToken(orderNumber, token) {
-  if (!token) return;
+  if (!token || typeof localStorage === 'undefined') return;
   try {
     const existing = getStoredGuestOrders();
     const cleanList = existing.filter((item) => 
@@ -1218,16 +1223,32 @@ export async function getCurrentUserId() {
   }
 }
 
-// 1. Create Order (Attach user_id / customer_id if logged in, otherwise attach secure guest_order_token)
+// 1. Create Order (Enforce authenticated customer before order placement)
 export async function createOrder(orderPayload) {
-  const orderNumber = `APEX-${Math.floor(1000 + Math.random() * 9000)}`;
   const userId = await getCurrentUserId();
+  const effectiveUserId = userId || orderPayload.customer_id || orderPayload.user_id || null;
+
+  // Protect order placement: Require authenticated Supabase user
+  if (isSupabaseConfigured && !effectiveUserId) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) {
+        throw new Error("Authentication required. Please sign in to your APEX STORE account before placing an order.");
+      }
+    } catch (e) {
+      if (e.message?.includes("Authentication required")) throw e;
+      throw new Error("Authentication required. Please sign in to your APEX STORE account before placing an order.");
+    }
+  }
+
+  const finalUserId = effectiveUserId || userId || null;
+  const orderNumber = `APEX-${Math.floor(1000 + Math.random() * 9000)}`;
   const guestToken = generateGuestOrderToken();
 
   const newOrder = {
     order_number: orderNumber,
-    customer_id: userId, // Primary UUID linking to authenticated customer
-    user_id: userId, // Backward compatibility
+    customer_id: finalUserId, // Primary UUID linking to authenticated customer
+    user_id: finalUserId, // Backward compatibility
     guest_order_token: guestToken,
     customer_name: orderPayload.customer_name,
     customer_email: orderPayload.customer_email,
@@ -3220,4 +3241,557 @@ export async function updateSocialGalleryOrder(itemsList) {
 export async function uploadSocialGalleryImage(file) {
   return uploadImageToSupabase(file, 'social');
 }
+
+// ==============================================================================
+// 7. COMPLETE RETURNS & REFUNDS API SYSTEM (SUPABASE CLOUD + GLOBAL SYNC)
+// ==============================================================================
+
+export const DEFAULT_RETURN_SETTINGS = {
+  return_window_days: 7,
+  allow_refund: true,
+  allow_exchange: true,
+  allow_cod_returns: true,
+  allow_online_returns: true,
+  shipping_refund_rule: 'non_refundable', // 'non_refundable' | 'refundable_if_defective' | 'always_refundable'
+  require_photos: false,
+  return_reasons: [
+    { id: 'defective', label: 'Product is defective / not functioning', is_active: true, sort_order: 1 },
+    { id: 'damaged', label: 'Product arrived damaged in transit', is_active: true, sort_order: 2 },
+    { id: 'wrong_item', label: 'Received wrong item or model', is_active: true, sort_order: 3 },
+    { id: 'missing_accessory', label: 'Missing parts or accessories', is_active: true, sort_order: 4 },
+    { id: 'not_as_described', label: 'Product does not match website description', is_active: true, sort_order: 5 },
+    { id: 'size_fit', label: 'Size / fit or comfort issue', is_active: true, sort_order: 6 },
+    { id: 'changed_mind', label: 'Changed my mind / No longer needed', is_active: true, sort_order: 7 },
+    { id: 'other', label: 'Other reason (specify in notes)', is_active: true, sort_order: 8 },
+  ],
+  policy_banner_text: '7-Day APEX Guarantee: Hassle-Free Returns & Replacements',
+  enabled: true,
+};
+
+const LOCAL_RETURNS_STORAGE_KEY = 'apex_returns_records';
+const LOCAL_RETURN_SETTINGS_KEY = 'apex_return_settings_config';
+
+let inMemoryReturns = [];
+let inMemoryReturnSettings = null;
+
+function getLocalReturns() {
+  if (typeof localStorage === 'undefined') return inMemoryReturns;
+  try {
+    const raw = localStorage.getItem(LOCAL_RETURNS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : inMemoryReturns;
+  } catch (e) {
+    return inMemoryReturns;
+  }
+}
+
+function saveLocalReturns(list) {
+  inMemoryReturns = Array.isArray(list) ? list : [];
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LOCAL_RETURNS_STORAGE_KEY, JSON.stringify(list));
+  } catch (e) {}
+}
+
+function getLocalReturnSettings() {
+  if (typeof localStorage === 'undefined') return inMemoryReturnSettings || DEFAULT_RETURN_SETTINGS;
+  try {
+    const raw = localStorage.getItem(LOCAL_RETURN_SETTINGS_KEY);
+    return raw ? { ...DEFAULT_RETURN_SETTINGS, ...JSON.parse(raw) } : inMemoryReturnSettings || DEFAULT_RETURN_SETTINGS;
+  } catch (e) {
+    return inMemoryReturnSettings || DEFAULT_RETURN_SETTINGS;
+  }
+}
+
+function saveLocalReturnSettings(settings) {
+  inMemoryReturnSettings = settings;
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LOCAL_RETURN_SETTINGS_KEY, JSON.stringify(settings));
+  } catch (e) {}
+}
+
+function broadcastReturnsUpdated() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('apex_returns_updated'));
+  }
+}
+
+/**
+ * Fetch Return Settings (Window days, allowed methods, reasons)
+ */
+export async function fetchReturnSettings() {
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('return_settings')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (!error && data) {
+        saveLocalReturnSettings(data);
+        return { ...DEFAULT_RETURN_SETTINGS, ...data };
+      }
+
+      // Check Global Cloud CMS fallback
+      const cloud = await fetchGlobalSupabaseCMSConfig();
+      if (cloud?.return_settings) {
+        saveLocalReturnSettings(cloud.return_settings);
+        return { ...DEFAULT_RETURN_SETTINGS, ...cloud.return_settings };
+      }
+    } catch (e) {
+      console.warn('Return settings fetch error:', e);
+    }
+  }
+  return getLocalReturnSettings();
+}
+
+/**
+ * Save Return Settings (Admin only)
+ */
+export async function saveReturnSettings(newSettings) {
+  const merged = { ...DEFAULT_RETURN_SETTINGS, ...newSettings, updated_at: new Date().toISOString() };
+  saveLocalReturnSettings(merged);
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase
+        .from('return_settings')
+        .upsert([{ id: 1, ...merged }]);
+    } catch (e) {
+      console.warn('Supabase return_settings upsert warning:', e);
+    }
+
+    try {
+      await saveGlobalSupabaseCMSConfig({ return_settings: merged });
+    } catch (e) {}
+  }
+
+  broadcastReturnsUpdated();
+  return merged;
+}
+
+/**
+ * Fetch Customer Returns (Filtered by current authenticated user)
+ */
+export async function fetchCustomerReturns() {
+  const userId = await getCurrentUserId();
+  let userEmail = null;
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.email) userEmail = session.user.email.toLowerCase().trim();
+
+      let query = supabase.from('returns').select('*').order('created_at', { ascending: false });
+      if (userId) {
+        query = query.or(`user_id.eq.${userId},customer_id.eq.${userId}`);
+      } else if (userEmail) {
+        query = query.ilike('customer_email', userEmail);
+      }
+
+      const { data, error } = await query;
+      if (!error && Array.isArray(data)) {
+        return data;
+      }
+    } catch (e) {
+      console.warn('Customer returns fetch warning:', e);
+    }
+  }
+
+  // Fallback to local returns
+  const localList = getLocalReturns();
+  if (userId) {
+    return localList.filter((r) => r.user_id === userId || r.customer_id === userId);
+  }
+  if (userEmail) {
+    return localList.filter((r) => (r.customer_email || '').toLowerCase() === userEmail);
+  }
+  return localList;
+}
+
+/**
+ * Fetch Single Return by ID or Return Number
+ */
+export async function fetchReturnById(returnIdentifier) {
+  if (isSupabaseConfigured) {
+    try {
+      const isNum = Number(returnIdentifier) && !isNaN(Number(returnIdentifier));
+      let query = supabase.from('returns').select('*');
+      if (isNum) {
+        query = query.or(`id.eq.${returnIdentifier},return_number.eq.${returnIdentifier}`);
+      } else {
+        query = query.eq('return_number', returnIdentifier);
+      }
+      const { data, error } = await query.maybeSingle();
+      if (!error && data) return data;
+
+      const cloud = await fetchGlobalSupabaseCMSConfig();
+      if (cloud?.returns && Array.isArray(cloud.returns)) {
+        const match = cloud.returns.find((r) => String(r.id) === String(returnIdentifier) || String(r.return_number) === String(returnIdentifier));
+        if (match) return match;
+      }
+    } catch (e) {}
+  }
+
+  const localList = getLocalReturns();
+  return localList.find((r) => String(r.id) === String(returnIdentifier) || String(r.return_number) === String(returnIdentifier)) || null;
+}
+
+/**
+ * Fetch Admin Returns (All returns with filter & search support)
+ */
+export async function fetchAdminReturns(filterStatus = 'all') {
+  let list = [];
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('returns')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        list = data;
+      }
+    } catch (e) {
+      console.warn('Admin returns Supabase fetch warning:', e);
+    }
+  }
+
+  if (list.length === 0) {
+    // Check cloud CMS fallback
+    if (isSupabaseConfigured) {
+      const cloud = await fetchGlobalSupabaseCMSConfig();
+      if (cloud?.returns && Array.isArray(cloud.returns) && cloud.returns.length > 0) {
+        list = cloud.returns;
+      }
+    }
+  }
+
+  if (list.length === 0) {
+    list = getLocalReturns();
+  }
+
+  if (filterStatus && filterStatus !== 'all') {
+    return list.filter((r) => String(r.status || '').toLowerCase() === filterStatus.toLowerCase());
+  }
+
+  return list;
+}
+
+/**
+ * Helper to check whether an order item is eligible for return
+ */
+export function checkOrderItemReturnEligibility(order, item, existingReturns = [], settings = DEFAULT_RETURN_SETTINGS) {
+  if (!order || !item || typeof item !== 'object') {
+    return { isEligible: false, remainingQuantity: 0, reason: 'Invalid order or item' };
+  }
+
+  const safeSettings = settings && typeof settings === 'object' ? { ...DEFAULT_RETURN_SETTINGS, ...settings } : DEFAULT_RETURN_SETTINGS;
+  const safeReturns = Array.isArray(existingReturns) ? existingReturns : [];
+
+  // 1. Check system enabled
+  if (safeSettings.enabled === false) {
+    return { isEligible: false, remainingQuantity: 0, reason: 'Return system is currently disabled by store management.' };
+  }
+
+  // 2. Order status must be Delivered
+  const orderStatus = String(order.status || '').toLowerCase();
+  if (orderStatus !== 'delivered') {
+    return { isEligible: false, remainingQuantity: 0, reason: 'Returns are only available once the order is delivered.' };
+  }
+
+  // 3. Calculate delivery date and return window expiration
+  const deliveredDate = order.delivered_at 
+    ? new Date(order.delivered_at) 
+    : order.updated_at 
+    ? new Date(order.updated_at) 
+    : new Date(order.created_at || Date.now());
+
+  const windowDays = Number(safeSettings.return_window_days || 7);
+  const expiryDate = new Date(deliveredDate.getTime() + windowDays * 24 * 60 * 60 * 1000);
+  const now = new Date();
+
+  const isExpired = now > expiryDate;
+  const daysLeft = Math.max(0, Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+
+  if (isExpired) {
+    return {
+      isEligible: false,
+      remainingQuantity: 0,
+      isExpired: true,
+      windowDays,
+      daysLeft: 0,
+      reason: `The ${windowDays}-day return window for this order has expired.`,
+    };
+  }
+
+  // 4. Calculate already returned/requested quantities for this specific item
+  const itemId = item.id || item.product_id;
+  const itemName = item.name || item.product_name;
+
+  let alreadyReturnedQty = 0;
+  const relatedReturns = safeReturns.filter(
+    (r) => r && (r.order_number === order.order_number || String(r.order_id) === String(order.id)) && r.status !== 'rejected' && r.status !== 'cancelled'
+  );
+
+  for (const ret of relatedReturns) {
+    let retItems = [];
+    if (Array.isArray(ret.items)) {
+      retItems = ret.items;
+    } else if (typeof ret.items === 'string') {
+      try {
+        const parsed = JSON.parse(ret.items);
+        retItems = Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        retItems = [];
+      }
+    }
+    for (const rItem of retItems) {
+      if (!rItem || typeof rItem !== 'object') continue;
+      const matchId = itemId && (rItem.id === itemId || rItem.product_id === itemId);
+      const matchName = itemName && (rItem.name === itemName || rItem.product_name === itemName);
+      if (matchId || matchName) {
+        alreadyReturnedQty += Number(rItem.quantity || 1);
+      }
+    }
+  }
+
+  const totalOrderedQty = Number(item.quantity || 1);
+  const remainingQuantity = Math.max(0, totalOrderedQty - alreadyReturnedQty);
+
+  if (remainingQuantity <= 0) {
+    return {
+      isEligible: false,
+      remainingQuantity: 0,
+      alreadyReturnedQty,
+      isExpired: false,
+      windowDays,
+      daysLeft,
+      reason: 'All units for this item have already been submitted for return.',
+    };
+  }
+
+  return {
+    isEligible: true,
+    remainingQuantity,
+    alreadyReturnedQty,
+    totalOrderedQty,
+    isExpired: false,
+    windowDays,
+    daysLeft,
+  };
+}
+
+/**
+ * Submit Return Request (Customer)
+ */
+export async function submitReturnRequest(payload) {
+  const userId = await getCurrentUserId();
+  const settings = await fetchReturnSettings();
+
+  const returnNumber = `RET-${Math.floor(1000 + Math.random() * 9000)}`;
+  const now = new Date().toISOString();
+
+  const itemUnitPrice = Number(payload.item?.price || 0);
+  const returnQty = Number(payload.quantity || 1);
+  const requestedAmount = itemUnitPrice * returnQty;
+
+  const returnRecord = {
+    return_number: returnNumber,
+    order_id: payload.order_id || null,
+    order_number: payload.order_number,
+    user_id: userId || payload.user_id || null,
+    customer_id: userId || payload.customer_id || null,
+    customer_name: payload.customer_name || 'Customer',
+    customer_email: payload.customer_email || '',
+    customer_phone: payload.customer_phone || '',
+    status: 'requested',
+    reason: payload.reason,
+    reason_details: payload.reason_details || payload.reason,
+    condition: payload.condition || 'opened_unused',
+    packaging_available: payload.packaging_available !== false,
+    description: payload.description || '',
+    resolution: payload.resolution || 'refund',
+    requested_amount: requestedAmount,
+    approved_amount: requestedAmount,
+    discount_adjustment: 0,
+    shipping_adjustment: 0,
+    final_refund_amount: requestedAmount,
+    refund_method: payload.refund_method || 'original',
+    items: [
+      {
+        id: payload.item?.id || null,
+        product_id: payload.item?.id || payload.item?.product_id || null,
+        name: payload.item?.name || 'APEX Product',
+        price: itemUnitPrice,
+        quantity: returnQty,
+        image: payload.item?.image || payload.item?.images?.[0] || '',
+        restock_status: 'pending',
+      },
+    ],
+    evidence_urls: payload.evidence_urls || [],
+    status_history: [
+      {
+        status: 'requested',
+        title: 'Return Request Submitted',
+        note: payload.description || 'Customer submitted return request.',
+        timestamp: now,
+        actor: 'Customer',
+      },
+    ],
+    delivered_at: payload.delivered_at || null,
+    created_at: now,
+    updated_at: now,
+  };
+
+  // 1. Direct Supabase Mutation
+  let created = null;
+  if (isSupabaseConfigured) {
+    try {
+      const data = await safeSupabaseMutation('returns', 'insert', returnRecord);
+      if (data) created = data;
+    } catch (e) {
+      console.warn('Supabase returns insert error:', e);
+    }
+  }
+
+  if (!created) {
+    created = { ...returnRecord, id: Date.now() };
+  }
+
+  // 2. Sync to local storage & Global Cloud CMS
+  const localList = getLocalReturns();
+  const updatedList = [created, ...localList.filter((r) => r.id !== created.id)];
+  saveLocalReturns(updatedList);
+
+  if (isSupabaseConfigured) {
+    try {
+      await saveGlobalSupabaseCMSConfig({ returns: updatedList });
+    } catch (e) {}
+  }
+
+  broadcastReturnsUpdated();
+  return created;
+}
+
+/**
+ * Update Return Status (Admin)
+ */
+export async function updateReturnStatus(returnId, newStatus, adminNote = '', additionalFields = {}) {
+  const currentReturn = await fetchReturnById(returnId);
+  const now = new Date().toISOString();
+
+  const historyEntry = {
+    status: newStatus,
+    title: `Status updated to ${newStatus.replace(/_/g, ' ').toUpperCase()}`,
+    note: adminNote || '',
+    timestamp: now,
+    actor: 'Admin',
+  };
+
+  const existingHistory = Array.isArray(currentReturn?.status_history)
+    ? currentReturn.status_history
+    : typeof currentReturn?.status_history === 'string'
+    ? JSON.parse(currentReturn.status_history || '[]')
+    : [];
+
+  const updatedHistory = [...existingHistory, historyEntry];
+
+  const patch = {
+    status: newStatus,
+    admin_note: adminNote || currentReturn?.admin_note || '',
+    status_history: updatedHistory,
+    updated_at: now,
+    ...additionalFields,
+  };
+
+  // 1. Update Supabase
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('returns').update(patch).eq('id', returnId);
+    } catch (e) {
+      try {
+        await supabase.from('returns').update(patch).eq('return_number', returnId);
+      } catch (err2) {}
+    }
+  }
+
+  // 2. Update Local & Global CMS
+  const localList = getLocalReturns();
+  const updatedList = localList.map((r) => {
+    if (String(r.id) === String(returnId) || String(r.return_number) === String(returnId)) {
+      return { ...r, ...patch };
+    }
+    return r;
+  });
+  saveLocalReturns(updatedList);
+
+  if (isSupabaseConfigured) {
+    try {
+      await saveGlobalSupabaseCMSConfig({ returns: updatedList });
+    } catch (e) {}
+  }
+
+  broadcastReturnsUpdated();
+  return { ...currentReturn, ...patch };
+}
+
+/**
+ * Approve Return Refund with optional Inventory Restock
+ */
+export async function approveReturnRefund(returnId, details) {
+  const {
+    approved_amount,
+    discount_adjustment = 0,
+    shipping_adjustment = 0,
+    final_refund_amount,
+    refund_method = 'original',
+    admin_note = '',
+    restock_item = false,
+  } = details;
+
+  const currentReturn = await fetchReturnById(returnId);
+  const now = new Date().toISOString();
+
+  // If restock requested, increment stock in products table
+  if (restock_item && isSupabaseConfigured && currentReturn?.items) {
+    const items = Array.isArray(currentReturn.items) ? currentReturn.items : JSON.parse(currentReturn.items || '[]');
+    for (const it of items) {
+      if (it.product_id || it.id) {
+        const prodId = it.product_id || it.id;
+        const returnQty = Number(it.quantity || 1);
+        try {
+          const { data: p } = await supabase.from('products').select('stock').eq('id', prodId).single();
+          if (p) {
+            await supabase.from('products').update({ stock: (p.stock || 0) + returnQty }).eq('id', prodId);
+          }
+        } catch (e) {
+          console.warn('Restock update warning:', e);
+        }
+      }
+    }
+  }
+
+  const patch = {
+    status: 'refunded',
+    approved_amount: Number(approved_amount || currentReturn?.requested_amount || 0),
+    discount_adjustment: Number(discount_adjustment || 0),
+    shipping_adjustment: Number(shipping_adjustment || 0),
+    final_refund_amount: Number(final_refund_amount || approved_amount || currentReturn?.requested_amount || 0),
+    refund_method,
+    admin_note: admin_note || 'Refund processed and completed.',
+  };
+
+  return updateReturnStatus(returnId, 'refunded', admin_note || `Refund of PKR ${patch.final_refund_amount} processed via ${refund_method}.`, patch);
+}
+
+/**
+ * Upload Evidence Image to Supabase Storage
+ */
+export async function uploadReturnEvidence(file) {
+  return uploadImageToSupabase(file, 'returns');
+}
+
 

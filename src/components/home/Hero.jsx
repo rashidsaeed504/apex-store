@@ -243,7 +243,7 @@ export default function Hero() {
 
   return (
     <section
-      className="hero-section group/hero relative min-h-[auto] sm:min-h-[85vh] lg:min-h-[92vh] flex items-center bg-[#050505] overflow-hidden pt-20 mt-12 sm:pt-28 pb-8 sm:pb-16 md:py-32 select-none"
+      className="hero-section group/hero relative flex items-center bg-[#050505] overflow-hidden pt-24 sm:pt-28 md:pt-32 pb-8 sm:pb-12 md:pb-16 select-none min-h-[auto] sm:min-h-[85vh] lg:min-h-[92vh]"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onTouchStart={handleTouchStart}
@@ -264,8 +264,8 @@ export default function Hero() {
           </div>
         ) : (
           <div className="hero-slider group/slider relative w-full">
-            {/* .slides-viewport: overflow-hidden strictly contains the sliding cards */}
-            <div className="slides-viewport relative min-h-[580px] sm:min-h-[500px] md:min-h-[580px] lg:min-h-[620px] overflow-hidden w-full">
+            {/* .slides-viewport: responsive height that comfortably holds mobile stacked content and desktop 2-col layout */}
+            <div className="slides-viewport relative min-h-[640px] xs:min-h-[660px] sm:min-h-[520px] md:min-h-[580px] lg:min-h-[620px] overflow-hidden w-full">
               {parsedSlides.map((slide, index) => {
                 const isCurrent = index === currentIndex;
                 const isPrev = index === prevIndex;
@@ -286,20 +286,20 @@ export default function Hero() {
                 return (
                   <div
                     key={slide?.id || index}
-                    className={`absolute inset-0 w-full flex items-center ${animationClass}`}
+                    className={`absolute inset-0 w-full flex items-start lg:items-center ${animationClass}`}
                     style={{
                       transform: isAnimating ? undefined : "translate3d(0, 0, 0)",
                       zIndex: isCurrent ? 10 : 5,
                     }}
                     aria-hidden={!isCurrent}
                   >
-                    <div className="w-full flex flex-col lg:flex-row items-center justify-between gap-6 lg:gap-12">
+                    <div className="w-full flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 sm:gap-6 lg:gap-12 pt-2 sm:pt-4 lg:pt-0">
                       {/* Left Content Column */}
-                      <div className="w-full lg:w-1/2 flex flex-col items-start text-left pt-2 lg:pt-0 z-10">
+                      <div className="w-full lg:w-1/2 flex flex-col items-start text-left z-10">
                         {/* 1. Eyebrow Badge & Promotional Tag */}
-                        <div className="flex items-center gap-2 mb-3.5 sm:mb-5 flex-wrap justify-start">
+                        <div className="flex items-center gap-2 mb-2.5 sm:mb-4 flex-wrap justify-start">
                           {slide?.badge && (
-                            <div className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-apex-red/10 border border-apex-red/30 backdrop-blur-md shadow-[0_0_12px_rgba(220,38,38,0.25)]">
+                            <div className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1 rounded-full bg-apex-red/10 border border-apex-red/30 backdrop-blur-md shadow-[0_0_12px_rgba(220,38,38,0.25)]">
                               <span className="w-1.5 h-1.5 rounded-full bg-apex-red animate-pulse shrink-0" />
                               <span className="text-apex-red font-bold tracking-[0.12em] sm:tracking-[0.15em] text-[9px] sm:text-xs uppercase">
                                 {slide.badge}
@@ -316,7 +316,7 @@ export default function Hero() {
                         </div>
 
                         {/* 2. Main Headline */}
-                        <h1 className="text-[40px] sm:text-6xl md:text-7xl lg:text-[76px] xl:text-[84px] font-black uppercase tracking-tight leading-[0.94] sm:leading-[0.92] mb-3.5 sm:mb-6 text-white max-w-2xl text-left">
+                        <h1 className="text-[30px] xs:text-[34px] sm:text-5xl md:text-6xl lg:text-7xl xl:text-[80px] font-black uppercase tracking-tight leading-[1.05] sm:leading-[0.92] mb-3 sm:mb-5 text-white max-w-2xl text-left break-words">
                           {slide?.title}{" "}
                           {slide?.highlight_text && (
                             <span className="text-gradient-red drop-shadow-[0_0_35px_rgba(220,38,38,0.4)] block sm:inline">
@@ -327,17 +327,17 @@ export default function Hero() {
 
                         {/* 3. Description */}
                         {slide?.description && (
-                          <p className="text-gray-400 text-[14px] sm:text-base md:text-lg max-w-[320px] sm:max-w-md lg:max-w-lg mb-5 sm:mb-8 font-normal leading-relaxed text-left">
+                          <p className="text-xs xs:text-sm sm:text-base md:text-lg text-gray-400 max-w-[340px] sm:max-w-md lg:max-w-lg mb-4 sm:mb-6 font-normal leading-relaxed text-left">
                             {slide.description}
                           </p>
                         )}
 
                         {/* 4. CTA Buttons */}
-                        <div className="flex flex-row items-center justify-start gap-2.5 sm:gap-4 w-auto mb-6 sm:mb-8 lg:mb-10 flex-wrap">
+                        <div className="flex flex-row items-center justify-start gap-2.5 sm:gap-4 w-auto mb-4 sm:mb-6 lg:mb-8 flex-wrap">
                           {slide?.primary_button_text && (
                             <Link
                               to={slide.primary_button_link || "/shop"}
-                              className="btn-primary group inline-flex items-center justify-center h-11 sm:h-12 px-5 sm:px-8 py-2.5 sm:py-3.5 rounded-xl shadow-[0_0_18px_rgba(220,38,38,0.35)] hover:shadow-[0_0_35px_rgba(220,38,38,0.7)] hover:-translate-y-0.5 transition-all duration-300 text-xs sm:text-sm font-bold tracking-wider uppercase cursor-pointer shrink-0"
+                              className="btn-primary group inline-flex items-center justify-center h-10 sm:h-11 md:h-12 px-4 sm:px-7 py-2 sm:py-3 rounded-xl shadow-[0_0_18px_rgba(220,38,38,0.35)] hover:shadow-[0_0_35px_rgba(220,38,38,0.7)] hover:-translate-y-0.5 transition-all duration-300 text-xs sm:text-sm font-bold tracking-wider uppercase cursor-pointer shrink-0"
                               tabIndex={isCurrent ? 0 : -1}
                             >
                               {slide.primary_button_text}
@@ -348,7 +348,7 @@ export default function Hero() {
                           {slide?.secondary_button_text && (
                             <Link
                               to={slide.secondary_button_link || "/deals"}
-                              className="btn-secondary group inline-flex items-center justify-center h-11 sm:h-12 px-5 sm:px-8 py-2.5 sm:py-3.5 rounded-xl border border-white/20 hover:border-white/60 hover:bg-white/10 hover:-translate-y-0.5 transition-all duration-300 text-xs sm:text-sm font-bold tracking-wider uppercase cursor-pointer shrink-0"
+                              className="btn-secondary group inline-flex items-center justify-center h-10 sm:h-11 md:h-12 px-4 sm:px-7 py-2 sm:py-3 rounded-xl border border-white/20 hover:border-white/60 hover:bg-white/10 hover:-translate-y-0.5 transition-all duration-300 text-xs sm:text-sm font-bold tracking-wider uppercase cursor-pointer shrink-0"
                               tabIndex={isCurrent ? 0 : -1}
                             >
                               {slide.secondary_button_text}
@@ -358,7 +358,7 @@ export default function Hero() {
 
                         {/* 5. Features / Trust Items */}
                         {featuresList.length > 0 && (
-                          <div className="pt-4 sm:pt-5 border-t border-white/10 w-full">
+                          <div className="pt-3 sm:pt-4 border-t border-white/10 w-full mb-2 lg:mb-0">
                             {/* Mobile 2x2 Grid */}
                             <div className="grid grid-cols-2 gap-2 sm:hidden w-full max-w-[340px]">
                               {featuresList.map((feat, idx) => (
@@ -388,12 +388,12 @@ export default function Hero() {
                         )}
                       </div>
 
-                      {/* Right Product Visual Column */}
-                      <div className="w-full lg:w-1/2 relative flex items-center justify-center mt-4 sm:mt-6 lg:mt-0">
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-52 h-52 sm:w-80 sm:h-80 lg:w-[420px] lg:h-[420px] bg-apex-red/30 blur-[70px] sm:blur-[110px] lg:blur-[135px] rounded-full pointer-events-none" />
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 sm:w-96 sm:h-96 lg:w-[520px] lg:h-[520px] bg-apex-red/10 blur-[90px] sm:blur-[140px] rounded-full pointer-events-none" />
+                      {/* Right Product Visual Column / Mobile Bottom Visual */}
+                      <div className="w-full lg:w-1/2 relative flex items-center justify-center mt-2 sm:mt-4 lg:mt-0">
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 sm:w-80 sm:h-80 lg:w-[420px] lg:h-[420px] bg-apex-red/30 blur-[60px] sm:blur-[110px] lg:blur-[135px] rounded-full pointer-events-none" />
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 sm:w-96 sm:h-96 lg:w-[520px] lg:h-[520px] bg-apex-red/10 blur-[80px] sm:blur-[140px] rounded-full pointer-events-none" />
 
-                        <div className="relative z-10 w-full flex items-center justify-center h-[220px] sm:h-[320px] md:h-[400px] lg:h-[480px] xl:h-[520px]">
+                        <div className="relative z-10 w-full flex items-center justify-center h-[180px] xs:h-[210px] sm:h-[280px] md:h-[380px] lg:h-[480px] xl:h-[500px]">
                           <picture className="max-h-full max-w-full flex items-center justify-center">
                             {slide?.mobile_image_url && (
                               <source
@@ -407,7 +407,7 @@ export default function Hero() {
                               loading={index === 0 ? "eager" : "lazy"}
                               width={520}
                               height={520}
-                              className="max-h-[220px] sm:max-h-[320px] md:max-h-[400px] lg:max-h-[480px] xl:max-h-[520px] w-auto object-contain drop-shadow-[0_20px_45px_rgba(0,0,0,0.95)] filter select-none pointer-events-none animate-float"
+                              className="max-h-[180px] xs:max-h-[210px] sm:max-h-[280px] md:max-h-[380px] lg:max-h-[480px] xl:max-h-[500px] w-auto max-w-full object-contain drop-shadow-[0_20px_45px_rgba(0,0,0,0.95)] filter select-none pointer-events-none animate-float"
                               onError={(e) => {
                                 e.currentTarget.onerror = null;
                                 e.currentTarget.src = heroProductImg;
@@ -449,7 +449,7 @@ export default function Hero() {
 
             {/* .pagination: Bottom Slide Pagination Indicators */}
             {totalSlides > 1 && (
-              <div className="pagination flex items-center justify-center gap-2 mt-6 sm:mt-8 lg:mt-12 z-20 relative">
+              <div className="pagination flex items-center justify-center gap-2 mt-4 sm:mt-6 lg:mt-10 z-20 relative">
                 {slides.map((_, index) => (
                   <button
                     key={index}

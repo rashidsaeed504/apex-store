@@ -1,40 +1,57 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Package, Truck, CheckCircle2, Clock, ExternalLink, Star, Search, RefreshCw, AlertCircle } from 'lucide-react';
+import { Package, Truck, CheckCircle2, Clock, ExternalLink, Star, Search, RefreshCw, AlertCircle, RotateCcw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { fetchMyOrders } from '../../services/api';
-import { formatPrice } from '../../utils/helpers';
+import { fetchMyOrders, fetchCustomerReturns, fetchReturnSettings, checkOrderItemReturnEligibility } from '../../services/api';
+import { formatPrice, safeParseItems } from '../../utils/helpers';
 import { useToast } from '../../context/ToastContext';
+import ReturnRequestModal from '../../components/returns/ReturnRequestModal';
 
 export default function AccountOrders() {
   const { user } = useAuth();
   const { error: toastError } = useToast();
   const [orders, setOrders] = useState([]);
+  const [returns, setReturns] = useState([]);
+  const [returnSettings, setReturnSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [modalItemData, setModalItemData] = useState(null); // { order, item }
   const navigate = useNavigate();
 
-  const loadOrders = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const data = await fetchMyOrders();
-      setOrders(data || []);
+      const [ordersData, returnsData, settingsData] = await Promise.all([
+        fetchMyOrders(),
+        fetchCustomerReturns(),
+        fetchReturnSettings(),
+      ]);
+      setOrders(ordersData || []);
+      setReturns(returnsData || []);
+      setReturnSettings(settingsData);
     } catch (err) {
       console.warn('Failed to load orders:', err);
-      toastError('Failed to fetch your orders. Please refresh.');
+      if (toastError) toastError('Failed to fetch your orders. Please refresh.');
     } finally {
       setLoading(false);
     }
   };
 
+  const loadOrders = loadData;
+
   useEffect(() => {
     document.title = "My Orders | APEX Store";
-    loadOrders();
+    loadData();
+
+    const handleUpdate = () => loadData();
+    window.addEventListener('apex_returns_updated', handleUpdate);
+    return () => window.removeEventListener('apex_returns_updated', handleUpdate);
   }, []);
 
-  const filteredOrders = orders.filter((o) => {
+  const filteredOrders = (Array.isArray(orders) ? orders : []).filter((o) => {
+    if (!o) return false;
     // Status Filter
     if (activeFilter === 'delivered' && o.status !== 'Delivered') return false;
     if (activeFilter === 'active' && ['Delivered', 'Cancelled', 'Refunded'].includes(o.status)) return false;
@@ -43,9 +60,9 @@ export default function AccountOrders() {
     // Search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      const numMatch = (o.order_number || '').toLowerCase().includes(q);
-      const items = Array.isArray(o.items) ? o.items : typeof o.items === 'string' ? JSON.parse(o.items) : [];
-      const itemMatch = items.some((it) => (it.name || '').toLowerCase().includes(q));
+      const numMatch = (o.order_number || String(o.id || '')).toLowerCase().includes(q);
+      const items = safeParseItems(o.items);
+      const itemMatch = items.some((it) => (it?.name || '').toLowerCase().includes(q));
       if (!numMatch && !itemMatch) return false;
     }
 
@@ -167,11 +184,8 @@ export default function AccountOrders() {
       ) : (
         <div className="space-y-3 sm:space-y-4">
           {filteredOrders.map((order) => {
-            const items = Array.isArray(order.items)
-              ? order.items
-              : typeof order.items === 'string'
-              ? JSON.parse(order.items)
-              : [];
+            if (!order) return null;
+            const items = safeParseItems(order.items);
             const dateStr = order.created_at
               ? new Date(order.created_at).toLocaleDateString('en-US', {
                   month: 'short',
@@ -191,7 +205,7 @@ export default function AccountOrders() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 sm:pb-4 border-b border-white/10 gap-2 sm:gap-3">
                   <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                     <span className="font-mono font-black text-sm sm:text-base text-white">
-                      #{order.order_number}
+                      #{order.order_number || String(order.id || 'N/A')}
                     </span>
                     <span className={`text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadge(order.status)}`}>
                       {order.status || 'Pending'}
@@ -205,30 +219,66 @@ export default function AccountOrders() {
 
                 {/* Items List */}
                 <div className="py-3 sm:py-4 space-y-2 sm:space-y-3">
-                  {items.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between gap-3 text-xs text-gray-300 bg-[#121212] p-2.5 sm:p-3 rounded-xl border border-white/5"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#1a1a1a] border border-white/10 flex items-center justify-center text-apex-red font-bold text-xs shrink-0">
-                          {item.quantity}×
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-bold text-white truncate text-xs sm:text-sm">
-                            {item.name}
-                          </p>
-                          <p className="text-[10px] sm:text-[11px] text-gray-400">
-                            {formatPrice(item.price)} each
-                          </p>
-                        </div>
-                      </div>
+                  {items.map((rawItem, idx) => {
+                    const item = typeof rawItem === 'object' && rawItem !== null ? rawItem : { name: String(rawItem || 'Product'), price: 0, quantity: 1 };
+                    const isDelivered = String(order.status || '').toLowerCase() === 'delivered';
+                    const eligibility = checkOrderItemReturnEligibility(order, item, returns, returnSettings || undefined);
 
-                      <div className="font-mono font-bold text-xs sm:text-sm text-white shrink-0">
-                        {formatPrice(item.price * item.quantity)}
+                    return (
+                      <div
+                        key={idx}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-gray-300 bg-[#121212] p-2.5 sm:p-3.5 rounded-xl border border-white/5"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-[#1a1a1a] border border-white/10 flex items-center justify-center text-apex-red font-bold text-xs shrink-0">
+                            {item.quantity || 1}×
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-white truncate text-xs sm:text-sm">
+                              {item.name || 'APEX Item'}
+                            </p>
+                            <p className="text-[10px] sm:text-[11px] text-gray-400">
+                              {formatPrice(item.price)} each
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/5">
+                          <div className="font-mono font-bold text-xs sm:text-sm text-white shrink-0">
+                            {formatPrice((item.price || 0) * (item.quantity || 1))}
+                          </div>
+
+                          {/* Return / Exchange Button on Delivered Items */}
+                          {isDelivered && (
+                            <div className="shrink-0">
+                              {eligibility.isEligible ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setModalItemData({ order, item })}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-apex-red/15 hover:bg-apex-red text-white hover:text-white border border-apex-red/30 transition-all cursor-pointer shadow-[0_0_12px_rgba(220,38,38,0.2)]"
+                                >
+                                  <RotateCcw className="w-3 h-3 text-apex-red group-hover:text-white" />
+                                  <span>Return / Exchange</span>
+                                </button>
+                              ) : eligibility.alreadyReturnedQty > 0 ? (
+                                <Link
+                                  to="/account/returns"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-blue-500/15 text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 transition-colors"
+                                >
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  <span>Return Requested ({eligibility.alreadyReturnedQty})</span>
+                                </Link>
+                              ) : eligibility.isExpired ? (
+                                <span className="text-[10px] text-gray-500 italic">
+                                  Return window expired
+                                </span>
+                              ) : null}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Bottom Row: Address, Total & Actions */}
@@ -273,6 +323,20 @@ export default function AccountOrders() {
             );
           })}
         </div>
+      )}
+
+      {/* Return Request Modal */}
+      {modalItemData && (
+        <ReturnRequestModal
+          isOpen={Boolean(modalItemData)}
+          onClose={() => setModalItemData(null)}
+          order={modalItemData.order}
+          item={modalItemData.item}
+          existingReturns={returns}
+          onReturnSubmitted={() => {
+            loadData();
+          }}
+        />
       )}
     </div>
   );

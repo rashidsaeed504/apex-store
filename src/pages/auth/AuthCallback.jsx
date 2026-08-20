@@ -85,12 +85,17 @@ export default function AuthCallback() {
 
           if (success) success('Signed in successfully! Welcome to APEX.');
 
-          // Retrieve destination from sessionStorage
+          // Retrieve destination from sessionStorage or query param
           let targetPath = '/account';
           try {
             const stored = sessionStorage.getItem('apex_auth_redirect');
-            if (stored && stored.startsWith('/') && !stored.includes('/login') && !stored.includes('/auth')) {
+            const searchParams = new URLSearchParams(location.search);
+            const queryRedirect = searchParams.get('redirect') || searchParams.get('from');
+
+            if (stored && stored.startsWith('/') && !stored.includes('/login') && !stored.includes('/auth') && !stored.includes('/signup')) {
               targetPath = stored;
+            } else if (queryRedirect && queryRedirect.startsWith('/') && !queryRedirect.includes('/login') && !queryRedirect.includes('/auth') && !queryRedirect.includes('/signup')) {
+              targetPath = queryRedirect;
             }
             sessionStorage.removeItem('apex_auth_redirect');
           } catch (e) {
@@ -108,8 +113,13 @@ export default function AuthCallback() {
               let targetPath = '/account';
               try {
                 const stored = sessionStorage.getItem('apex_auth_redirect');
-                if (stored && stored.startsWith('/') && !stored.includes('/login') && !stored.includes('/auth')) {
+                const searchParams = new URLSearchParams(location.search);
+                const queryRedirect = searchParams.get('redirect') || searchParams.get('from');
+
+                if (stored && stored.startsWith('/') && !stored.includes('/login') && !stored.includes('/auth') && !stored.includes('/signup')) {
                   targetPath = stored;
+                } else if (queryRedirect && queryRedirect.startsWith('/') && !queryRedirect.includes('/login') && !queryRedirect.includes('/auth') && !queryRedirect.includes('/signup')) {
+                  targetPath = queryRedirect;
                 }
                 sessionStorage.removeItem('apex_auth_redirect');
               } catch (e) {}

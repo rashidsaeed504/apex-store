@@ -3,8 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Heart, ShoppingBag, Truck, ShieldCheck } from "lucide-react";
 import { fetchProductBySlug, fetchProducts } from "../services/api";
-import { formatPrice, WHATSAPP_NUMBER } from "../utils/helpers";
-import { WhatsAppIcon } from "../components/ui/SocialIcons";
+import { formatPrice } from "../utils/helpers";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { useToast } from "../context/ToastContext";
@@ -259,22 +258,6 @@ export default function ProductDetail() {
               <Heart size={24} fill={isWishlisted ? "currentColor" : "none"} />
             </button>
           </div>
-
-          {/* WhatsApp Order Button */}
-          {!isOutOfStock && (
-            <button
-              onClick={() => {
-                const productUrl = `${window.location.origin}/product/${product.slug || slug}`;
-                const message = `Hello APEX Store, I want to order:\n\nProduct: ${product.name}\n\nPrice: ${formatPrice(product.price)}\n\nProduct Link: ${productUrl}\n\nPlease confirm availability and delivery details.`;
-                const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-                window.open(waUrl, '_blank', 'noopener,noreferrer');
-              }}
-              className="w-full py-3 sm:py-3.5 rounded-xl uppercase text-xs sm:text-sm font-bold tracking-wider transition-all bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white flex items-center justify-center gap-2 active:scale-[0.98] border border-[#25D366]/20 hover:border-[#25D366] mb-8 cursor-pointer"
-            >
-              <WhatsAppIcon className="w-5 h-5" />
-              WHATSAPP ORDER
-            </button>
-          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 border-t border-white/10 pt-6 sm:pt-8">
             <div className="flex items-center gap-3 text-gray-400">

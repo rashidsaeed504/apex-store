@@ -30,3 +30,19 @@ export const slugify = (text) => {
 export const cn = (...classes) => {
   return classes.filter(Boolean).join(' ');
 };
+
+export const safeParseItems = (raw) => {
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  if (!raw) return [];
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter(Boolean);
+      if (parsed && typeof parsed === 'object') return [parsed];
+    } catch (e) {
+      return [];
+    }
+  }
+  if (typeof raw === 'object') return [raw];
+  return [];
+};

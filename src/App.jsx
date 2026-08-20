@@ -22,6 +22,7 @@ import AuthCallback from './pages/auth/AuthCallback';
 import AccountLayout from './pages/account/AccountLayout';
 import AccountDashboard from './pages/account/AccountDashboard';
 import AccountOrders from './pages/account/AccountOrders';
+import AccountReturns from './pages/account/AccountReturns';
 import AccountAddresses from './pages/account/AccountAddresses';
 import AccountReviews from './pages/account/AccountReviews';
 import AccountProfile from './pages/account/AccountProfile';
@@ -56,6 +57,7 @@ import AdminSpecialOffer from './pages/admin/AdminSpecialOffer';
 import AdminProducts from './pages/admin/AdminProducts';
 import AdminCategories from './pages/admin/AdminCategories';
 import AdminOrders from './pages/admin/AdminOrders';
+import AdminReturns from './pages/admin/AdminReturns';
 import AdminReviews from './pages/admin/AdminReviews';
 import AdminCustomers from './pages/admin/AdminCustomers';
 import AdminSocialGallery from './pages/admin/AdminSocialGallery';
@@ -91,6 +93,7 @@ export default function App() {
                     <Route path="privacy-policy" element={<PrivacyPolicy />} />
                     <Route path="terms-and-conditions" element={<TermsAndConditions />} />
                     <Route path="refund-policy" element={<RefundPolicy />} />
+                    <Route path="return-policy" element={<RefundPolicy />} />
 
                     {/* Customer Auth Routes */}
                     <Route path="login" element={<Login />} />
@@ -105,6 +108,7 @@ export default function App() {
                       <Route path="account" element={<AccountLayout />}>
                         <Route index element={<AccountDashboard />} />
                         <Route path="orders" element={<AccountOrders />} />
+                        <Route path="returns" element={<AccountReturns />} />
                         <Route path="tracking" element={<AccountOrders />} />
                         <Route path="addresses" element={<AccountAddresses />} />
                         <Route path="reviews" element={<AccountReviews />} />
@@ -129,6 +133,7 @@ export default function App() {
                       <Route path="products" element={<AdminProducts />} />
                       <Route path="categories" element={<AdminCategories />} />
                       <Route path="orders" element={<AdminOrders />} />
+                      <Route path="returns" element={<AdminReturns />} />
                       <Route path="reviews" element={<AdminReviews />} />
                       <Route path="customers" element={<AdminCustomers />} />
                     </Route>

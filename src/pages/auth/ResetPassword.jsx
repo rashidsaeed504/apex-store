@@ -42,7 +42,15 @@ export default function ResetPassword() {
     try {
       await updatePassword(password);
       success('Password updated successfully! Welcome to your account.');
-      navigate('/account', { replace: true });
+      let dest = '/account';
+      try {
+        const stored = sessionStorage.getItem('apex_auth_redirect');
+        if (stored && stored.startsWith('/') && !stored.includes('/login') && !stored.includes('/auth') && !stored.includes('/signup')) {
+          dest = stored;
+        }
+        sessionStorage.removeItem('apex_auth_redirect');
+      } catch (e) {}
+      navigate(dest, { replace: true });
     } catch (err) {
       console.warn('Password update error:', err);
       const msg = err.message || 'Failed to update password. Your recovery link may have expired.';

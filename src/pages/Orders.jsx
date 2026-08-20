@@ -19,18 +19,25 @@ import {
   Eye,
   DollarSign,
   TrendingUp,
+  RotateCcw,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   fetchMyOrders,
   fetchOrderByVerification,
   getCurrentUserId,
+  fetchCustomerReturns,
+  fetchReturnSettings,
+  checkOrderItemReturnEligibility,
 } from "../services/api";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { formatPrice } from "../utils/helpers";
+import ReturnRequestModal from "../components/returns/ReturnRequestModal";
 
 export default function Orders() {
   const [orders, setOrders] = useState([]);
+  const [returns, setReturns] = useState([]);
+  const [returnSettings, setReturnSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchOrderNumber, setSearchOrderNumber] = useState("");
   const [searchVerification, setSearchVerification] = useState("");
@@ -39,14 +46,21 @@ export default function Orders() {
   const [searchError, setSearchError] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [isAuthUser, setIsAuthUser] = useState(false);
+  const [modalItemData, setModalItemData] = useState(null);
 
   const loadOrders = async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
     try {
       const uid = await getCurrentUserId();
       setIsAuthUser(Boolean(uid));
-      const myOrders = await fetchMyOrders();
+      const [myOrders, customerReturns, settings] = await Promise.all([
+        fetchMyOrders(),
+        fetchCustomerReturns(),
+        fetchReturnSettings(),
+      ]);
       setOrders(myOrders || []);
+      setReturns(customerReturns || []);
+      setReturnSettings(settings);
 
       if (searchedOrder?.order_number) {
         const fresh = await fetchOrderByVerification({
@@ -729,42 +743,76 @@ export default function Orders() {
 
                     <div className="space-y-3 divide-y divide-white/5">
                       {Array.isArray(order.items) && order.items.length > 0 ? (
-                        order.items.map((item, idx) => (
-                          <div
-                            key={idx}
-                            className="pt-3 first:pt-0 flex items-center justify-between gap-4"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 bg-black rounded-lg border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
-                                {item.image ? (
-                                  <img
-                                    src={item.image}
-                                    alt={item.name || item.product_name}
-                                    className="w-full h-full object-contain"
-                                  />
-                                ) : (
-                                  <Package className="w-6 h-6 text-gray-600" />
+                        order.items.map((item, idx) => {
+                          const isDelivered = String(order.status || '').toLowerCase() === 'delivered';
+                          const eligibility = checkOrderItemReturnEligibility(order, item, returns, returnSettings || undefined);
+
+                          return (
+                            <div
+                              key={idx}
+                              className="pt-3 first:pt-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-black rounded-lg border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                                  {item.image ? (
+                                    <img
+                                      src={item.image}
+                                      alt={item.name || item.product_name}
+                                      className="w-full h-full object-contain"
+                                    />
+                                  ) : (
+                                    <Package className="w-6 h-6 text-gray-600" />
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-white leading-tight">
+                                    {item.name ||
+                                      item.product_name ||
+                                      "APEX Tech Product"}
+                                  </p>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    Qty: {item.quantity} ×{" "}
+                                    {formatPrice(item.price)}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between sm:justify-end gap-3">
+                                <div className="text-sm font-bold text-white text-right font-mono">
+                                  {formatPrice(
+                                    (item.price || 0) * (item.quantity || 1),
+                                  )}
+                                </div>
+
+                                {isDelivered && (
+                                  <div>
+                                    {eligibility.isEligible ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setModalItemData({ order, item })}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-apex-red/15 hover:bg-apex-red text-white border border-apex-red/30 transition-all cursor-pointer shadow-[0_0_12px_rgba(220,38,38,0.2)]"
+                                      >
+                                        <RotateCcw className="w-3 h-3 text-apex-red" />
+                                        <span>Return / Exchange</span>
+                                      </button>
+                                    ) : eligibility.alreadyReturnedQty > 0 ? (
+                                      <Link
+                                        to="/account/returns"
+                                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-blue-500/15 text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 transition-colors"
+                                      >
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        <span>Return Requested</span>
+                                      </Link>
+                                    ) : eligibility.isExpired ? (
+                                      <span className="text-[10px] text-gray-500 italic">
+                                        Return expired
+                                      </span>
+                                    ) : null}
+                                  </div>
                                 )}
                               </div>
-                              <div>
-                                <p className="text-sm font-bold text-white leading-tight">
-                                  {item.name ||
-                                    item.product_name ||
-                                    "APEX Tech Product"}
-                                </p>
-                                <p className="text-xs text-gray-500 mt-0.5">
-                                  Qty: {item.quantity} ×{" "}
-                                  {formatPrice(item.price)}
-                                </p>
-                              </div>
                             </div>
-                            <div className="text-sm font-bold text-white text-right font-mono">
-                              {formatPrice(
-                                (item.price || 0) * (item.quantity || 1),
-                              )}
-                            </div>
-                          </div>
-                        ))
+                          );
+                        })
                       ) : (
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-gray-300">
@@ -859,6 +907,20 @@ export default function Orders() {
             );
           })}
         </div>
+      )}
+
+      {/* Return Request Modal */}
+      {modalItemData && (
+        <ReturnRequestModal
+          isOpen={Boolean(modalItemData)}
+          onClose={() => setModalItemData(null)}
+          order={modalItemData.order}
+          item={modalItemData.item}
+          existingReturns={returns}
+          onReturnSubmitted={() => {
+            loadOrders(false);
+          }}
+        />
       )}
     </div>
   );

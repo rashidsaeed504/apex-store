@@ -14,6 +14,7 @@ import {
   ExternalLink, 
   Menu, 
   X,
+  RotateCcw,
 } from 'lucide-react';
 import Logo from '../components/ui/Logo';
 import { InstagramIcon } from '../components/ui/SocialIcons';
@@ -36,6 +37,7 @@ export default function AdminLayout() {
     { name: 'Products', path: '/admin/products', icon: Package },
     { name: 'Categories', path: '/admin/categories', icon: Tags },
     { name: 'Orders', path: '/admin/orders', icon: ShoppingBag },
+    { name: 'Returns', path: '/admin/returns', icon: RotateCcw },
     { name: 'Reviews', path: '/admin/reviews', icon: Star },
     { name: 'Customers', path: '/admin/customers', icon: Users },
   ];
