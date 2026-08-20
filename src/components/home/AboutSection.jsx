@@ -69,8 +69,9 @@ const AboutSection = () => {
             >
               <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent opacity-60 z-10" />
               <img
-                src="https://i.pinimg.com/736x/df/28/23/df2823f9722ccecb764701890dcfe288.jpg"
+                src="/src/assets/our story.png"
                 alt="About Apex Store Tech Lifestyle"
+                loading="lazy"
                 className="w-full h-auto object-cover"
               />
             </motion.div>

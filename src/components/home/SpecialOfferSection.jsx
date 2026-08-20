@@ -13,34 +13,22 @@ import { fetchActiveSpecialOffer } from "../../services/api";
 import { formatPrice, slugify } from "../../utils/helpers";
 import Rating from "../ui/Rating";
 
-export default function SpecialOfferSection() {
-  const [offer, setOffer] = useState(null);
-  const [loading, setLoading] = useState(true);
+import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+
+function CountdownTimer({ endTime }) {
   const [timeLeft, setTimeLeft] = useState(null);
 
   useEffect(() => {
-    async function loadOffer() {
-      try {
-        const data = await fetchActiveSpecialOffer();
-        setOffer(data);
-      } catch (err) {
-        console.warn("SpecialOffer fetch error:", err);
-        setOffer(null);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadOffer();
-  }, []);
-
-  // Countdown timer calculation if endAt is configured
-  useEffect(() => {
-    if (!offer?.endAt) {
+    if (!endTime) {
       setTimeLeft(null);
       return;
     }
 
-    const target = new Date(offer.endAt).getTime();
+    const target = new Date(endTime).getTime();
+    if (isNaN(target)) {
+      setTimeLeft(null);
+      return;
+    }
 
     const updateTimer = () => {
       const now = new Date().getTime();
@@ -69,7 +57,80 @@ export default function SpecialOfferSection() {
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [offer?.endAt]);
+  }, [endTime]);
+
+  if (!timeLeft) return null;
+
+  return (
+    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#181818] border border-white/10 text-xs font-mono font-bold text-gray-300">
+      <Clock className="w-3.5 h-3.5 text-apex-red" />
+      <span>ENDS IN:</span>
+      <span className="text-white">
+        {timeLeft.days > 0 ? `${timeLeft.days}d ` : ""}
+        {timeLeft.hours}:{timeLeft.minutes}:{timeLeft.seconds}
+      </span>
+    </div>
+  );
+}
+
+export default function SpecialOfferSection() {
+  const [offer, setOffer] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadOffer() {
+      try {
+        const data = await fetchActiveSpecialOffer();
+        if (isMounted) setOffer(data);
+      } catch (err) {
+        console.warn("SpecialOffer fetch error:", err);
+        if (isMounted) setOffer(null);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    loadOffer();
+
+    const handleUpdated = () => {
+      loadOffer();
+    };
+
+    window.addEventListener("apex_special_offer_updated", handleUpdated);
+    window.addEventListener("storage", handleUpdated);
+
+    let channel = null;
+    if (isSupabaseConfigured) {
+      try {
+        channel = supabase
+          .channel("public:special_offer_sync")
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "products" },
+            () => loadOffer()
+          )
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "special_offers" },
+            () => loadOffer()
+          )
+          .subscribe();
+      } catch (e) {
+        console.warn("Realtime special offer subscription warning:", e);
+      }
+    }
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("apex_special_offer_updated", handleUpdated);
+      window.removeEventListener("storage", handleUpdated);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -140,6 +201,7 @@ export default function SpecialOfferSection() {
                 <img
                   src={productImage}
                   alt={offer.name}
+                  loading="lazy"
                   className="w-full h-full object-contain filter drop-shadow-[0_15px_30px_rgba(0,0,0,0.9)] group-hover:scale-105 transition-transform duration-500"
                 />
               </motion.div>
@@ -160,16 +222,7 @@ export default function SpecialOfferSection() {
                 </span>
 
                 {/* Live Countdown Timer if configured */}
-                {timeLeft && (
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#181818] border border-white/10 text-xs font-mono font-bold text-gray-300">
-                    <Clock className="w-3.5 h-3.5 text-apex-red" />
-                    <span>ENDS IN:</span>
-                    <span className="text-white">
-                      {timeLeft.days > 0 ? `${timeLeft.days}d ` : ""}
-                      {timeLeft.hours}:{timeLeft.minutes}:{timeLeft.seconds}
-                    </span>
-                  </div>
-                )}
+                <CountdownTimer endTime={offer.endAt || offer.ends_at || offer.end_time} />
               </div>
 
               {/* Product Category & Rating */}

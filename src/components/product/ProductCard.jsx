@@ -91,6 +91,9 @@ export default function ProductCard({ product, className = '', disableMotion = f
         <img 
           src={productImage} 
           alt={product.name || 'APEX Product'} 
+          loading="lazy"
+          width={600}
+          height={600}
           onError={(e) => {
             e.currentTarget.onerror = null;
             e.currentTarget.src = 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&h=600&fit=crop';

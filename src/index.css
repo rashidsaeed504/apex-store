@@ -246,3 +246,85 @@ html.lenis, html.lenis body {
     -webkit-animation-play-state: paused !important;
   }
 }
+
+/* ===== Hero Slider GPU Transitions (550ms, cubic-bezier(0.22, 1, 0.36, 1)) ===== */
+@keyframes heroSlideInFromRight {
+  0% {
+    transform: translate3d(100%, 0, 0);
+  }
+  100% {
+    transform: translate3d(0%, 0, 0);
+  }
+}
+
+@keyframes heroSlideOutToLeft {
+  0% {
+    transform: translate3d(0%, 0, 0);
+  }
+  100% {
+    transform: translate3d(-100%, 0, 0);
+  }
+}
+
+@keyframes heroSlideInFromLeft {
+  0% {
+    transform: translate3d(-100%, 0, 0);
+  }
+  100% {
+    transform: translate3d(0%, 0, 0);
+  }
+}
+
+@keyframes heroSlideOutToRight {
+  0% {
+    transform: translate3d(0%, 0, 0);
+  }
+  100% {
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
+.hero-slide-in-right {
+  animation: heroSlideInFromRight 550ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform;
+}
+
+.hero-slide-out-left {
+  animation: heroSlideOutToLeft 550ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform;
+}
+
+.hero-slide-in-left {
+  animation: heroSlideInFromLeft 550ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform;
+}
+
+.hero-slide-out-right {
+  animation: heroSlideOutToRight 550ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform;
+}
+
+/* ===== Desktop Hero Navigation Arrow Hover Visibility ===== */
+@media (max-width: 767px) {
+  .hero-nav-arrow {
+    display: none !important;
+  }
+}
+
+@media (min-width: 768px) {
+  .hero-nav-arrow {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-50%) scale(0.95);
+    transition: opacity 220ms ease-out, transform 220ms ease-out, visibility 220ms ease-out, background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+  }
+
+  .hero-section:hover .hero-nav-arrow,
+  .hero-slider:hover .hero-nav-arrow {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(-50%) scale(1);
+  }
+}

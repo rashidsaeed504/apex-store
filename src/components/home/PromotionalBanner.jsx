@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft,
   ChevronRight,
   ArrowRight,
   Sparkles,
   ExternalLink,
-  Zap,
 } from "lucide-react";
 import { fetchBanners } from "../../services/api";
 
@@ -16,7 +14,6 @@ export default function PromotionalBanner() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [direction, setDirection] = useState(1); // 1 = right, -1 = left
 
   const touchStartX = useRef(null);
   const touchEndX = useRef(null);
@@ -36,30 +33,26 @@ export default function PromotionalBanner() {
     load();
   }, []);
 
-  // Auto-rotation timer (4.5s)
+  // Auto-rotation timer (4.5s) — single setTimeout, resets on index change
   useEffect(() => {
     if (banners.length <= 1 || isPaused) return;
 
-    const timer = setInterval(() => {
-      setDirection(1);
+    const timer = setTimeout(() => {
       setCurrentIndex((prev) => (prev + 1) % banners.length);
     }, 4500);
 
-    return () => clearInterval(timer);
-  }, [banners.length, isPaused]);
+    return () => clearTimeout(timer);
+  }, [banners.length, isPaused, currentIndex]);
 
   const handleNext = () => {
-    setDirection(1);
     setCurrentIndex((prev) => (prev + 1) % banners.length);
   };
 
   const handlePrev = () => {
-    setDirection(-1);
     setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
   };
 
   const handleDotClick = (idx) => {
-    setDirection(idx > currentIndex ? 1 : -1);
     setCurrentIndex(idx);
   };
 
@@ -94,30 +87,7 @@ export default function PromotionalBanner() {
     return null; // Gracefully hides if no banners exist
   }
 
-  const currentBanner = banners[currentIndex] || banners[0];
-
-  const variants = {
-    enter: (dir) => ({
-      x: dir > 0 ? "100%" : "-100%",
-      opacity: 0,
-    }),
-    center: {
-      x: 0,
-      opacity: 1,
-      transition: {
-        x: { type: "spring", stiffness: 300, damping: 30 },
-        opacity: { duration: 0.35 },
-      },
-    },
-    exit: (dir) => ({
-      x: dir > 0 ? "-100%" : "100%",
-      opacity: 0,
-      transition: {
-        x: { type: "spring", stiffness: 300, damping: 30 },
-        opacity: { duration: 0.35 },
-      },
-    }),
-  };
+  const totalBanners = banners.length;
 
   return (
     <section className="py-6 sm:py-8 lg:py-10 bg-apex-black relative z-10 overflow-hidden">
@@ -131,112 +101,101 @@ export default function PromotionalBanner() {
           onTouchEnd={handleTouchEnd}
           className="relative w-full h-[240px] sm:h-[300px] md:h-[360px] lg:h-[390px] rounded-2xl sm:rounded-3xl border border-white/10 bg-[#080808] overflow-hidden shadow-[0_15px_45px_rgba(0,0,0,0.85)] group select-none"
         >
-          {/* Cyberpunk Ambient Red Glows */}
-          {/* <div className="absolute top-1/2 left-1/4 -translate-y-1/2 w-72 h-72 bg-apex-red/20 blur-[90px] rounded-full pointer-events-none z-10" />
-          <div className="absolute -bottom-10 right-10 w-60 h-60 bg-amber-500/15 blur-[80px] rounded-full pointer-events-none z-10" /> */}
+          {/* Decorative Tech Grid Accent */}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(220,38,38,0.15),transparent_60%)] pointer-events-none z-[5]" />
 
-          {/* Animated Carousel Slide */}
-          <AnimatePresence initial={false} custom={direction} mode="wait">
-            <motion.div
-              key={currentBanner.id || currentIndex}
-              custom={direction}
-              variants={variants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              className="absolute inset-0 w-full h-full flex items-center justify-between"
-            >
-              {/* Background Graphic Image */}
-              {currentBanner.image_url && (
-                <div className="absolute inset-0 w-full h-full">
-                  <img
-                    src={currentBanner.image_url}
-                    alt={currentBanner.title || "Promotional Banner"}
-                    className="w-full h-full object-cover object-center opacity-60 group-hover:scale-105 transition-transform duration-700 ease-out"
-                    loading="lazy"
-                  />
-                  {/* Subtle Dark Vignette Gradients */}
-                  {/* <div className="absolute inset-0 bg-gradient-to-r from-black/95 via-black/70 to-black/40 sm:to-transparent" /> */}
-                  {/* <div className="absolute inset-0 bg-gradient-to-t from-[#080808] via-transparent to-black/40" /> */}
+          {/* ── CSS Slide Track ── */}
+          {banners.map((banner, index) => {
+            let offset = index - currentIndex;
+            const half = totalBanners / 2;
+            if (offset > half) offset -= totalBanners;
+            if (offset < -half) offset += totalBanners;
+
+            const isActive = offset === 0;
+            const isNear = Math.abs(offset) <= 1;
+
+            return (
+              <div
+                key={banner.id || index}
+                className="absolute inset-0 w-full h-full"
+                style={{
+                  transform: `translate3d(${offset * 100}%, 0, 0)`,
+                  transition: 'transform 600ms cubic-bezier(0.22, 1, 0.36, 1)',
+                  visibility: isNear ? 'visible' : 'hidden',
+                }}
+                aria-hidden={!isActive}
+              >
+                {/* Background Graphic Image */}
+                {banner.image_url && (
+                  <div className="absolute inset-0 w-full h-full">
+                    <img
+                      src={banner.image_url}
+                      alt={banner.title || "Promotional Banner"}
+                      className="w-full h-full object-cover object-center opacity-60 group-hover:scale-105 transition-transform duration-700 ease-out"
+                      loading="lazy"
+                      width={1200}
+                      height={400}
+                    />
+                  </div>
+                )}
+
+                {/* Banner Text & CTA Content */}
+                <div className="relative z-20 w-full px-6 sm:px-10 md:px-16 lg:px-20 max-w-3xl flex flex-col justify-center h-full text-left">
+                  {/* Badge Tag */}
+                  {banner.badge_text && (
+                    <div className="mb-2 sm:mb-3">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-widest bg-apex-red text-white shadow-[0_0_15px_rgba(220,38,38,0.6)]">
+                        <Sparkles size={11} /> {banner.badge_text}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Banner Main Title */}
+                  {banner.title && (
+                    <h2 className="text-xl sm:text-3xl md:text-4xl lg:text-5xl font-black uppercase tracking-tight text-white leading-tight sm:leading-none mb-2 sm:mb-3 drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">
+                      {banner.title}
+                    </h2>
+                  )}
+
+                  {/* Subtitle / Description */}
+                  {banner.subtitle && (
+                    <p className="text-xs sm:text-sm md:text-base text-gray-300 font-medium max-w-xl line-clamp-2 sm:line-clamp-3 mb-4 sm:mb-6 drop-shadow-md leading-relaxed">
+                      {banner.subtitle}
+                    </p>
+                  )}
+
+                  {/* CTA Action Button */}
+                  {banner.button_text && banner.button_url && (
+                    <div>
+                      {banner.button_url.startsWith("http") ? (
+                        <a
+                          href={banner.button_url}
+                          target={
+                            banner.open_in_new_tab ? "_blank" : "_self"
+                          }
+                          rel="noopener noreferrer"
+                          className="btn-primary inline-flex items-center justify-center gap-2 px-5 sm:px-7 py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-bold uppercase tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:shadow-[0_0_30px_rgba(220,38,38,0.7)] transition-all cursor-pointer w-fit"
+                          tabIndex={isActive ? 0 : -1}
+                        >
+                          {banner.button_text}
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      ) : (
+                        <Link
+                          to={banner.button_url}
+                          className="btn-primary inline-flex items-center justify-center gap-2 px-5 sm:px-7 py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-bold uppercase tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:shadow-[0_0_30px_rgba(220,38,38,0.7)] transition-all cursor-pointer w-fit"
+                          tabIndex={isActive ? 0 : -1}
+                        >
+                          {banner.button_text}
+                          <ArrowRight className="w-4 h-4" />
+                        </Link>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
-
-              {/* Decorative Tech Grid Lines & Sparks Accent */}
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(220,38,38,0.15),transparent_60%)] pointer-events-none" />
-
-              {/* Banner Text & CTA Content */}
-              <div className="relative z-20 w-full px-6 sm:px-10 md:px-16 lg:px-20 max-w-3xl flex flex-col justify-center h-full text-left">
-                {/* Badge Tag */}
-                {currentBanner.badge_text && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="mb-2 sm:mb-3"
-                  >
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-widest bg-apex-red text-white shadow-[0_0_15px_rgba(220,38,38,0.6)]">
-                      <Sparkles size={11} /> {currentBanner.badge_text}
-                    </span>
-                  </motion.div>
-                )}
-
-                {/* Banner Main Title */}
-                {currentBanner.title && (
-                  <motion.h2
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.15 }}
-                    className="text-xl sm:text-3xl md:text-4xl lg:text-5xl font-black uppercase tracking-tight text-white leading-tight sm:leading-none mb-2 sm:mb-3 drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]"
-                  >
-                    {currentBanner.title}
-                  </motion.h2>
-                )}
-
-                {/* Subtitle / Description */}
-                {currentBanner.subtitle && (
-                  <motion.p
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="text-xs sm:text-sm md:text-base text-gray-300 font-medium max-w-xl line-clamp-2 sm:line-clamp-3 mb-4 sm:mb-6 drop-shadow-md leading-relaxed"
-                  >
-                    {currentBanner.subtitle}
-                  </motion.p>
-                )}
-
-                {/* CTA Action Button */}
-                {currentBanner.button_text && currentBanner.button_url && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.25 }}
-                  >
-                    {currentBanner.button_url.startsWith("http") ? (
-                      <a
-                        href={currentBanner.button_url}
-                        target={
-                          currentBanner.open_in_new_tab ? "_blank" : "_self"
-                        }
-                        rel="noopener noreferrer"
-                        className="btn-primary inline-flex items-center justify-center gap-2 px-5 sm:px-7 py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-bold uppercase tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:shadow-[0_0_30px_rgba(220,38,38,0.7)] transition-all cursor-pointer w-fit"
-                      >
-                        {currentBanner.button_text}
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    ) : (
-                      <Link
-                        to={currentBanner.button_url}
-                        className="btn-primary inline-flex items-center justify-center gap-2 px-5 sm:px-7 py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-bold uppercase tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:shadow-[0_0_30px_rgba(220,38,38,0.7)] transition-all cursor-pointer w-fit"
-                      >
-                        {currentBanner.button_text}
-                        <ArrowRight className="w-4 h-4" />
-                      </Link>
-                    )}
-                  </motion.div>
-                )}
               </div>
-            </motion.div>
-          </AnimatePresence>
+            );
+          })}
 
           {/* Navigation Arrows (Desktop / Tablet only) */}
           {banners.length > 1 && (

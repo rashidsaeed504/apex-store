@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import Logo from '../components/ui/Logo';
+import { InstagramIcon } from '../components/ui/SocialIcons';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useToast } from '../context/ToastContext';
 
@@ -31,6 +32,7 @@ export default function AdminLayout() {
     { name: 'Hero Slider', path: '/admin/hero-slider', icon: Tv },
     { name: 'Banners', path: '/admin/banners', icon: ImageIcon },
     { name: 'Special Offer', path: '/admin/special-offer', icon: Flame },
+    { name: 'Social Gallery', path: '/admin/social-gallery', icon: InstagramIcon },
     { name: 'Products', path: '/admin/products', icon: Package },
     { name: 'Categories', path: '/admin/categories', icon: Tags },
     { name: 'Orders', path: '/admin/orders', icon: ShoppingBag },

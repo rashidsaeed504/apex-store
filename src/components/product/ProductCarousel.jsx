@@ -4,9 +4,11 @@ import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import ProductCard from './ProductCard';
 
 // Mobile Native Scroll Container with Smooth Auto-Scroll, Press & Hold Pause, and Left/Right Touch Swiping
+// ── Performance: IntersectionObserver pauses RAF loop when offscreen ──
 function MobileCarouselTrack({ products }) {
   const scrollContainerRef = useRef(null);
   const isInteractingRef = useRef(false);
+  const isVisibleRef = useRef(false);
   const resumeTimerRef = useRef(null);
   const animFrameRef = useRef(null);
   const accumulatedScrollRef = useRef(0);
@@ -28,8 +30,27 @@ function MobileCarouselTrack({ products }) {
 
     let isMounted = true;
 
+    // IntersectionObserver: only run RAF when visible in viewport
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        isVisibleRef.current = entry.isIntersecting;
+        if (entry.isIntersecting) {
+          // Reset timestamp so delta calculation doesn't include paused time
+          lastTimestampRef.current = null;
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(container);
+
     const step = (timestamp) => {
       if (!isMounted) return;
+
+      // Skip work when offscreen
+      if (!isVisibleRef.current) {
+        animFrameRef.current = requestAnimationFrame(step);
+        return;
+      }
 
       if (!lastTimestampRef.current) {
         lastTimestampRef.current = timestamp;
@@ -59,6 +80,7 @@ function MobileCarouselTrack({ products }) {
 
     return () => {
       isMounted = false;
+      observer.disconnect();
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
       lastTimestampRef.current = null;
@@ -191,7 +213,7 @@ export default function ProductCarousel({ products = [], title = '', highlightTi
         <MobileCarouselTrack products={products} />
       </div>
 
-      {/* DESKTOP ONLY (hidden md:block): Carousel with Vertically Centered Left/Right Navigation Arrows Beside Cards */}
+      {/* DESKTOP ONLY (hidden md:block): Carousel with Navigation Arrows */}
       <div className="hidden md:block relative group/carousel">
         {/* Previous (Left) Arrow Button */}
         <button

@@ -137,6 +137,12 @@ const safeSupabaseMutation = async (table, operation, payload, eqField, eqValue)
       }
     }
 
+    // Handle PGRST205 missing table in schema cache gracefully
+    if (error.code === 'PGRST205') {
+      console.warn(`[Supabase Table Fallback] Table '${table}' not found in Supabase schema. Falling back to local resilient store.`);
+      throw new Error(`Table '${table}' not found in Supabase schema`);
+    }
+
     // Log full detailed error in console for debugging
     console.error(`FULL SUPABASE ${operation.toUpperCase()} ERROR on ${table}:`, {
       message: error.message,
@@ -210,23 +216,58 @@ const setLocalSubcategories = (list) => {
 // 1. PRODUCTS API
 // ==========================================
 
+// ── Product query cache (prevents 3× duplicate Supabase queries on homepage) ──
+let _productsCachePromise = null;
+let _productsCacheTime = 0;
+const _PRODUCTS_CACHE_TTL = 30000; // 30 seconds
+
 export async function fetchProducts(includeArchived = false) {
+  // For the standard storefront path (non-archived), use a shared cached promise
+  if (!includeArchived) {
+    const now = Date.now();
+    if (_productsCachePromise && (now - _productsCacheTime < _PRODUCTS_CACHE_TTL)) {
+      return _productsCachePromise;
+    }
+    _productsCacheTime = now;
+    _productsCachePromise = _fetchProductsImpl(false);
+    _productsCachePromise.catch(() => { _productsCachePromise = null; });
+    return _productsCachePromise;
+  }
+  return _fetchProductsImpl(includeArchived);
+}
+
+// Invalidate product cache (called after admin writes so realtime updates work)
+export function invalidateProductsCache() {
+  _productsCachePromise = null;
+  _productsCacheTime = 0;
+}
+
+async function _fetchProductsImpl(includeArchived) {
   if (isSupabaseConfigured) {
     try {
-      let query = supabase.from('products').select('*').order('created_at', { ascending: false });
+      let query = supabase
+        .from('products')
+        .select('*')
+        .neq('status', 'SystemHidden')
+        .neq('category', 'SYSTEM')
+        .order('created_at', { ascending: false });
+
       if (!includeArchived) {
         query = query.neq('status', 'Archived').neq('status', 'Inactive');
       }
       const { data, error } = await query;
       if (!error && data) {
-        return data.map(normalizeProduct);
+        return data
+          .filter((p) => p.slug !== '__apex_cms_global_config__' && p.category !== 'SYSTEM' && p.status !== 'SystemHidden')
+          .map(normalizeProduct);
       }
     } catch (e) {
       console.warn('Supabase fetch error:', e.message);
     }
   }
   const local = getLocalProducts();
-  return includeArchived ? local : local.filter((p) => p.status !== 'Archived' && p.status !== 'Inactive');
+  return (includeArchived ? local : local.filter((p) => p.status !== 'Archived' && p.status !== 'Inactive'))
+    .filter((p) => p.slug !== '__apex_cms_global_config__' && p.category !== 'SYSTEM' && p.status !== 'SystemHidden');
 }
 
 export async function fetchProductBySlug(slug) {
@@ -392,7 +433,86 @@ export async function updateProduct(id, updates) {
 }
 
 // ==========================================
-// 1.5 SPECIAL OFFERS API (HOMEPAGE DYNAMIC PROMO DEAL)
+// 1.5 GLOBAL SUPABASE CMS ENGINE (CROSS-DEVICE CLOUD STORE)
+// ==========================================
+
+const CMS_GLOBAL_CONFIG_SLUG = '__apex_cms_global_config__';
+
+/**
+ * Fetch global CMS config from Supabase directly (cross-device source of truth)
+ */
+export async function fetchGlobalSupabaseCMSConfig() {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .select('description, updated_at')
+      .eq('slug', CMS_GLOBAL_CONFIG_SLUG)
+      .maybeSingle();
+
+    if (!error && data?.description) {
+      try {
+        const parsed = JSON.parse(data.description);
+        return { ...parsed, updated_at: data.updated_at };
+      } catch (e) {
+        return null;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to fetch global Supabase CMS config:', e);
+  }
+  return null;
+}
+
+/**
+ * Save global CMS config to Supabase directly
+ */
+export async function saveGlobalSupabaseCMSConfig(partialConfig) {
+  if (!isSupabaseConfigured) return false;
+  try {
+    const existing = await fetchGlobalSupabaseCMSConfig();
+    const merged = {
+      banners: partialConfig.banners !== undefined ? partialConfig.banners : (existing?.banners || []),
+      special_offer: partialConfig.special_offer !== undefined ? partialConfig.special_offer : (existing?.special_offer || null),
+      social_gallery: partialConfig.social_gallery !== undefined ? partialConfig.social_gallery : (existing?.social_gallery || []),
+      updated_at: new Date().toISOString(),
+    };
+
+    const payload = {
+      name: 'APEX CMS GLOBAL CONFIG',
+      slug: CMS_GLOBAL_CONFIG_SLUG,
+      category: 'SYSTEM',
+      price: 0,
+      status: 'SystemHidden',
+      is_featured: false,
+      is_trending: false,
+      is_new_arrival: false,
+      is_best_seller: false,
+      is_on_sale: false,
+      description: JSON.stringify(merged),
+      updated_at: merged.updated_at,
+    };
+
+    const { data: row } = await supabase
+      .from('products')
+      .select('id')
+      .eq('slug', CMS_GLOBAL_CONFIG_SLUG)
+      .maybeSingle();
+
+    if (row?.id) {
+      await supabase.from('products').update(payload).eq('id', row.id);
+    } else {
+      await supabase.from('products').insert([payload]);
+    }
+    return true;
+  } catch (e) {
+    console.warn('Failed to save global Supabase CMS config:', e);
+    return false;
+  }
+}
+
+// ==========================================
+// 2. SPECIAL OFFERS API (GLOBAL SUPABASE CMS SYNCHRONIZED)
 // ==========================================
 
 const LOCAL_SPECIAL_OFFER_KEY = 'apex_special_offer_config';
@@ -406,16 +526,23 @@ function getLocalSpecialOffer() {
   }
 }
 
-function setLocalSpecialOffer(config) {
+function setLocalSpecialOffer(data) {
   try {
-    localStorage.setItem(LOCAL_SPECIAL_OFFER_KEY, JSON.stringify(config));
-  } catch (e) {
-    console.warn('Failed to save local special offer:', e);
+    localStorage.setItem(LOCAL_SPECIAL_OFFER_KEY, JSON.stringify(data));
+  } catch (e) {}
+}
+
+function broadcastSpecialOfferUpdated() {
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('apex_special_offer_updated'));
+    } catch (e) {}
   }
 }
 
-// Fetch Active Special Offer for Homepage Display
+// Fetch Active Special Offer for Homepage Display across any device globally
 export async function fetchActiveSpecialOffer() {
+  // 1. Try dedicated Supabase 'special_offers' table
   if (isSupabaseConfigured) {
     try {
       const { data, error } = await supabase
@@ -427,7 +554,6 @@ export async function fetchActiveSpecialOffer() {
         .maybeSingle();
 
       if (!error && data) {
-        // Date range verification
         const now = new Date();
         if (data.start_at && new Date(data.start_at) > now) return null;
         if (data.end_at && new Date(data.end_at) < now) return null;
@@ -468,55 +594,92 @@ export async function fetchActiveSpecialOffer() {
         };
       }
     } catch (e) {
-      console.warn('Supabase fetchActiveSpecialOffer error:', e);
+      // Table doesn't exist yet, proceed to global cloud CMS config
+    }
+
+    // 2. Fetch from Global Supabase Cloud CMS record (accessible globally on all devices)
+    const globalCms = await fetchGlobalSupabaseCMSConfig();
+    if (globalCms?.special_offer) {
+      const offerConfig = globalCms.special_offer;
+      if (offerConfig.isActive !== false) {
+        const now = new Date();
+        if (offerConfig.startAt && new Date(offerConfig.startAt) > now) return null;
+        if (offerConfig.endAt && new Date(offerConfig.endAt) < now) return null;
+
+        const allProducts = await fetchProducts();
+        const product = allProducts.find((p) => p.id === Number(offerConfig.productId)) || allProducts[0];
+        if (!product) return null;
+
+        const salePrice = offerConfig.salePrice !== undefined && offerConfig.salePrice !== '' ? Number(offerConfig.salePrice) : product.price;
+        const originalPrice = offerConfig.originalPrice !== undefined && offerConfig.originalPrice !== '' ? Number(offerConfig.originalPrice) : (product.originalPrice || product.price);
+        const discount = offerConfig.discountPercentage !== undefined && offerConfig.discountPercentage !== '' 
+          ? Number(offerConfig.discountPercentage) 
+          : (originalPrice > salePrice ? Math.round(((originalPrice - salePrice) / originalPrice) * 100) : 0);
+
+        return {
+          id: offerConfig.id || 1,
+          productId: product.id,
+          isActive: true,
+          badgeText: offerConfig.badgeText || 'SPECIAL OFFER',
+          dealLabel: offerConfig.dealLabel || 'Limited Time Deal',
+          name: offerConfig.customTitle || product.name,
+          description: offerConfig.customDescription || product.description,
+          price: salePrice,
+          originalPrice: originalPrice,
+          discount: discount,
+          features: Array.isArray(offerConfig.features) && offerConfig.features.length > 0 ? offerConfig.features : (product.features || []),
+          warrantyText: offerConfig.warrantyText || 'Official 1-Year Warranty',
+          deliveryText: offerConfig.deliveryText || 'Express Delivery Across Pakistan',
+          primaryButtonText: offerConfig.primaryButtonText || 'SHOP NOW',
+          secondaryButtonText: offerConfig.secondaryButtonText || 'VIEW ALL DEALS',
+          startAt: offerConfig.startAt,
+          endAt: offerConfig.endAt,
+          images: product.images,
+          image: product.images?.[0] || product.image,
+          rating: product.rating,
+          reviews: product.reviews,
+          slug: product.slug,
+          category: product.category,
+        };
+      }
     }
   }
 
-  // Fallback from localStorage
+  // 3. Fallback from localStorage (offline / standalone dev)
   const localConfig = getLocalSpecialOffer();
   if (localConfig && localConfig.isActive !== false) {
-    const now = new Date();
-    if (localConfig.startAt && new Date(localConfig.startAt) > now) return null;
-    if (localConfig.endAt && new Date(localConfig.endAt) < now) return null;
-
     const allProducts = await fetchProducts();
     const product = allProducts.find((p) => p.id === Number(localConfig.productId)) || allProducts[0];
-    if (!product) return null;
-
-    const salePrice = localConfig.salePrice !== undefined && localConfig.salePrice !== '' ? Number(localConfig.salePrice) : product.price;
-    const originalPrice = localConfig.originalPrice !== undefined && localConfig.originalPrice !== '' ? Number(localConfig.originalPrice) : (product.originalPrice || product.price);
-    const discount = localConfig.discountPercentage !== undefined && localConfig.discountPercentage !== '' 
-      ? Number(localConfig.discountPercentage) 
-      : (originalPrice > salePrice ? Math.round(((originalPrice - salePrice) / originalPrice) * 100) : 0);
-
-    return {
-      id: localConfig.id || 1,
-      productId: product.id,
-      isActive: true,
-      badgeText: localConfig.badgeText || 'SPECIAL OFFER',
-      dealLabel: localConfig.dealLabel || 'Limited Time Deal',
-      name: localConfig.customTitle || product.name,
-      description: localConfig.customDescription || product.description,
-      price: salePrice,
-      originalPrice: originalPrice,
-      discount: discount,
-      features: Array.isArray(localConfig.features) && localConfig.features.length > 0 ? localConfig.features : (product.features || []),
-      warrantyText: localConfig.warrantyText || 'Official 1-Year Warranty',
-      deliveryText: localConfig.deliveryText || 'Express Delivery Across Pakistan',
-      primaryButtonText: localConfig.primaryButtonText || 'SHOP NOW',
-      secondaryButtonText: localConfig.secondaryButtonText || 'VIEW ALL DEALS',
-      startAt: localConfig.startAt,
-      endAt: localConfig.endAt,
-      images: product.images,
-      image: product.images?.[0],
-      rating: product.rating,
-      reviews: product.reviews,
-      slug: product.slug,
-      category: product.category,
-    };
+    if (product) {
+      const salePrice = localConfig.salePrice ? Number(localConfig.salePrice) : product.price;
+      const originalPrice = localConfig.originalPrice ? Number(localConfig.originalPrice) : (product.originalPrice || product.price);
+      return {
+        id: localConfig.id || 1,
+        productId: product.id,
+        isActive: true,
+        badgeText: localConfig.badgeText || 'SPECIAL OFFER',
+        dealLabel: localConfig.dealLabel || 'Limited Time Deal',
+        name: localConfig.customTitle || product.name,
+        description: localConfig.customDescription || product.description,
+        price: salePrice,
+        originalPrice: originalPrice,
+        discount: localConfig.discountPercentage ? Number(localConfig.discountPercentage) : 20,
+        features: Array.isArray(localConfig.features) && localConfig.features.length > 0 ? localConfig.features : (product.features || []),
+        warrantyText: localConfig.warrantyText || 'Official 1-Year Warranty',
+        deliveryText: localConfig.deliveryText || 'Express Delivery Across Pakistan',
+        primaryButtonText: localConfig.primaryButtonText || 'SHOP NOW',
+        secondaryButtonText: localConfig.secondaryButtonText || 'VIEW ALL DEALS',
+        images: product.images,
+        image: product.images?.[0] || product.image,
+        rating: product.rating,
+        reviews: product.reviews,
+        slug: product.slug,
+        category: product.category,
+      };
+    }
   }
 
-  // Graceful product fallback if table is not yet seeded
+  // 4. Default Seed Fallback from Live Product
   const allProds = await fetchProducts();
   if (!allProds || allProds.length === 0) return null;
   const p = allProds.find((x) => x.isSpecialOffer) || allProds[0];
@@ -539,7 +702,7 @@ export async function fetchActiveSpecialOffer() {
     primaryButtonText: 'SHOP NOW',
     secondaryButtonText: 'VIEW ALL DEALS',
     images: p.images,
-    image: p.images?.[0],
+    image: p.images?.[0] || p.image,
     rating: p.rating,
     reviews: p.reviews,
     slug: p.slug,
@@ -547,9 +710,10 @@ export async function fetchActiveSpecialOffer() {
   };
 }
 
-// Fetch for Admin Portal
+// Fetch for Admin Portal across any device
 export async function fetchAdminSpecialOffer() {
   if (isSupabaseConfigured) {
+    // 1. Try dedicated table
     try {
       const { data, error } = await supabase
         .from('special_offers')
@@ -582,8 +746,18 @@ export async function fetchAdminSpecialOffer() {
           updatedAt: data.updated_at,
         };
       }
-    } catch (e) {
-      console.warn('Supabase fetchAdminSpecialOffer error:', e);
+    } catch (e) {}
+
+    // 2. Try global Supabase Cloud CMS record
+    const globalCms = await fetchGlobalSupabaseCMSConfig();
+    if (globalCms?.special_offer) {
+      const offerConfig = globalCms.special_offer;
+      const allProducts = await fetchProducts();
+      const product = allProducts.find((p) => p.id === Number(offerConfig.productId)) || allProducts[0];
+      return {
+        ...offerConfig,
+        product: product || null,
+      };
     }
   }
 
@@ -611,7 +785,7 @@ export async function fetchAdminSpecialOffer() {
   };
 }
 
-// Save / Update Special Offer Configuration from Admin Portal
+// Save / Update Special Offer Configuration from Admin Portal (Global Persistence)
 export async function saveSpecialOffer(payload) {
   const dbPayload = {
     product_id: Number(payload.productId),
@@ -634,6 +808,7 @@ export async function saveSpecialOffer(payload) {
   };
 
   if (isSupabaseConfigured) {
+    // 1. Try dedicated table
     try {
       const { data: existing } = await supabase
         .from('special_offers')
@@ -643,37 +818,24 @@ export async function saveSpecialOffer(payload) {
         .maybeSingle();
 
       if (existing?.id) {
-        const { data, error } = await supabase
+        await supabase
           .from('special_offers')
           .update(dbPayload)
-          .eq('id', existing.id)
-          .select('*, product:products(*)')
-          .single();
-
-        if (!error && data) {
-          setLocalSpecialOffer({ ...payload, id: data.id });
-          return data;
-        }
+          .eq('id', existing.id);
       } else {
-        const { data, error } = await supabase
+        await supabase
           .from('special_offers')
-          .insert([dbPayload])
-          .select('*, product:products(*)')
-          .single();
-
-        if (!error && data) {
-          setLocalSpecialOffer({ ...payload, id: data.id });
-          return data;
-        }
+          .insert([dbPayload]);
       }
-    } catch (e) {
-      console.warn('Supabase saveSpecialOffer error:', e);
-    }
+    } catch (e) {}
+
+    // 2. Persist to Global Supabase Cloud CMS record
+    await saveGlobalSupabaseCMSConfig({ special_offer: payload });
   }
 
-  const saved = { ...payload, id: payload.id || Date.now() };
-  setLocalSpecialOffer(saved);
-  return saved;
+  setLocalSpecialOffer(payload);
+  broadcastSpecialOfferUpdated();
+  return payload;
 }
 
 export const fetchSpecialOfferProduct = fetchActiveSpecialOffer;
@@ -2049,506 +2211,1013 @@ export async function calculateProductRating(productId) {
 
   return { rating: averageRating, reviewsCount: count };
 }
-
 // ==========================================
-// 8. PROMOTIONAL BANNERS API
+// 8. UNIFIED HERO & PROMOTIONAL BANNERS API (SINGLE SOURCE OF TRUTH)
 // ==========================================
 
-const LOCAL_BANNERS_KEY = 'apex_promotional_banners';
+const UNIFIED_HERO_BANNERS_KEY = 'apex_homepage_hero_banners';
+const LEGACY_BANNERS_KEY = 'apex_promotional_banners';
+const LEGACY_HERO_KEY = 'apex_hero_slides_v1';
 
-const INITIAL_SEED_BANNERS = [
+export const INITIAL_SEED_HERO_BANNERS = [
   {
     id: 1,
-    title: 'OFFICIAL PARTNERSHIP',
-    subtitle: 'PUBG MOBILE × APEX ZERO • ULTRA-LOW LATENCY 20MS GAMING GEAR',
-    badge_text: 'EXCLUSIVE COLLAB',
-    image_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=1600&auto=format&fit=crop&q=80',
-    button_text: 'EXPLORE GEAR',
-    button_url: '/shop',
-    open_in_new_tab: false,
-    display_order: 1,
-    is_active: true,
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 2,
-    title: 'SUMMER CYBER DROP',
-    subtitle: 'UP TO 40% OFF ON PRO WIRELESS HEADSETS & HI-FI SMARTWEAR',
-    badge_text: 'LIMITED TIME DEAL',
-    image_url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1600&auto=format&fit=crop&q=80',
-    button_text: 'VIEW DEALS',
-    button_url: '/deals',
-    open_in_new_tab: false,
-    display_order: 2,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
-
-let inMemoryBanners = [...INITIAL_SEED_BANNERS];
-
-function getLocalBanners() {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const raw = window.localStorage.getItem(LOCAL_BANNERS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          inMemoryBanners = parsed;
-          return parsed;
-        }
-      }
-      window.localStorage.setItem(LOCAL_BANNERS_KEY, JSON.stringify(INITIAL_SEED_BANNERS));
-    }
-    return inMemoryBanners;
-  } catch (e) {
-    return inMemoryBanners;
-  }
-}
-
-function setLocalBanners(banners) {
-  inMemoryBanners = Array.isArray(banners) ? [...banners] : [];
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.setItem(LOCAL_BANNERS_KEY, JSON.stringify(inMemoryBanners));
-    }
-  } catch (e) {
-    console.warn('Failed to save local banners:', e);
-  }
-}
-
-/**
- * Fetch promotional banners for storefront homepage
- * @param {boolean} onlyActive - Filter only active banners
- */
-export async function fetchBanners(onlyActive = true) {
-  let banners = [];
-
-  if (isSupabaseConfigured) {
-    try {
-      let query = supabase.from('banners').select('*').order('display_order', { ascending: true });
-      if (onlyActive) {
-        query = query.eq('is_active', true);
-      }
-      const { data, error } = await query;
-      if (!error && Array.isArray(data) && data.length > 0) {
-        banners = data;
-      }
-    } catch (e) {
-      console.warn('Supabase fetchBanners error:', e.message);
-    }
-  }
-
-  if (banners.length === 0) {
-    banners = getLocalBanners();
-    if (onlyActive) {
-      banners = banners.filter((b) => b.is_active !== false);
-    }
-  }
-
-  return banners.sort((a, b) => (Number(a.display_order) || 0) - (Number(b.display_order) || 0));
-}
-
-/**
- * Fetch all banners for Admin Portal (includes active and inactive)
- */
-export async function fetchAdminBanners() {
-  return fetchBanners(false);
-}
-
-/**
- * Save or Update a promotional banner
- */
-export async function saveBanner(bannerData) {
-  const isEditing = Boolean(bannerData.id);
-  const now = new Date().toISOString();
-
-  const payload = {
-    title: bannerData.title?.trim() || '',
-    subtitle: bannerData.subtitle?.trim() || '',
-    badge_text: bannerData.badge_text?.trim() || '',
-    image_url: bannerData.image_url?.trim() || '',
-    button_text: bannerData.button_text?.trim() || '',
-    button_url: bannerData.button_url?.trim() || '',
-    open_in_new_tab: Boolean(bannerData.open_in_new_tab),
-    display_order: Number(bannerData.display_order) || 1,
-    is_active: bannerData.is_active !== false,
-    updated_at: now,
-  };
-
-  if (isSupabaseConfigured) {
-    try {
-      if (isEditing) {
-        const data = await safeSupabaseMutation('banners', 'update', payload, 'id', bannerData.id);
-        if (data) {
-          const local = getLocalBanners();
-          const updated = local.map((b) => (b.id === bannerData.id ? { ...b, ...data } : b));
-          setLocalBanners(updated);
-          return data;
-        }
-      } else {
-        payload.created_at = now;
-        const data = await safeSupabaseMutation('banners', 'insert', payload);
-        if (data) {
-          const local = getLocalBanners();
-          setLocalBanners([...local, data]);
-          return data;
-        }
-      }
-    } catch (e) {
-      console.warn('Supabase saveBanner fallback:', e.message);
-    }
-  }
-
-  const local = getLocalBanners();
-  if (isEditing) {
-    const updated = local.map((b) => (b.id === bannerData.id ? { ...b, ...payload } : b));
-    setLocalBanners(updated);
-    return { ...payload, id: bannerData.id };
-  } else {
-    const newId = Date.now();
-    const created = { ...payload, id: newId, created_at: now };
-    setLocalBanners([...local, created]);
-    return created;
-  }
-}
-
-/**
- * Delete a banner by ID
- */
-export async function deleteBanner(bannerId) {
-  if (isSupabaseConfigured) {
-    try {
-      const { error } = await supabase.from('banners').delete().eq('id', bannerId);
-      if (error) console.warn('Supabase deleteBanner error:', error.message);
-    } catch (e) {
-      console.warn('Supabase deleteBanner fallback:', e.message);
-    }
-  }
-
-  const local = getLocalBanners();
-  setLocalBanners(local.filter((b) => b.id !== bannerId));
-  return true;
-}
-
-/**
- * Toggle a banner's active status
- */
-export async function toggleBannerStatus(bannerId, isActive) {
-  if (isSupabaseConfigured) {
-    try {
-      await safeSupabaseMutation('banners', 'update', { 
-        is_active: isActive, 
-        updated_at: new Date().toISOString() 
-      }, 'id', bannerId);
-    } catch (e) {
-      console.warn('Supabase toggleBannerStatus fallback:', e.message);
-    }
-  }
-
-  const local = getLocalBanners();
-  const updated = local.map((b) => (String(b.id) === String(bannerId) ? { ...b, is_active: isActive, updated_at: new Date().toISOString() } : b));
-  setLocalBanners(updated);
-  return updated.find((b) => String(b.id) === String(bannerId)) || { id: bannerId, is_active: isActive };
-}
-
-/**
- * Update display order for multiple banners
- */
-export async function updateBannersOrder(bannersList) {
-  const local = getLocalBanners();
-  const updatedLocal = local.map((b) => {
-    const match = bannersList.find((item) => item.id === b.id);
-    return match ? { ...b, display_order: match.display_order } : b;
-  });
-  setLocalBanners(updatedLocal);
-
-  if (isSupabaseConfigured) {
-    for (const b of bannersList) {
-      try {
-        await supabase.from('banners').update({ display_order: b.display_order }).eq('id', b.id);
-      } catch (e) {
-        console.warn('Supabase update order error:', e);
-      }
-    }
-  }
-
-  return updatedLocal;
-}
-
-// ==========================================
-// 8. HERO SLIDER API (SUPABASE + RESILIENT LOCAL ENGINE)
-// ==========================================
-
-const LOCAL_HERO_SLIDES_KEY = 'apex_hero_slides_v1';
-
-export const INITIAL_SEED_HERO_SLIDES = [
-  {
-    id: 1,
-    badge: 'PREMIUM TECH. PREMIUM YOU.',
     title: 'TECH WITHOUT',
     highlight_text: 'LIMITS.',
+    subtitle: 'Discover next-generation spatial audio, noise-canceling headphones and wireless gear engineered for uncompromising performance.',
     description: 'Discover next-generation spatial audio, noise-canceling headphones and wireless gear engineered for uncompromising performance.',
+    badge_text: 'PREMIUM TECH. PREMIUM YOU.',
+    badge: 'PREMIUM TECH. PREMIUM YOU.',
+    promotional_badge: 'FLAGSHIP',
+    image_url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1200&auto=format&fit=crop&q=80',
+    desktop_image_url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1200&auto=format&fit=crop&q=80',
+    mobile_image_url: '',
+    button_text: 'SHOP NOW',
     primary_button_text: 'SHOP NOW',
+    button_url: '/shop',
     primary_button_link: '/shop',
     secondary_button_text: 'EXPLORE DEALS',
     secondary_button_link: '/deals',
-    desktop_image_url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1200&auto=format&fit=crop&q=80',
-    mobile_image_url: '',
     features: ['100% Original', 'Free Delivery', '7 Days Return', '24/7 Support'],
-    promotional_badge: 'FLAGSHIP',
-    is_active: true,
+    display_order: 1,
     sort_order: 1,
+    is_active: true,
+    open_in_new_tab: false,
     autoplay_duration: 6000,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   },
   {
     id: 2,
-    badge: 'NEXT-GEN TITANIUM WEARABLE',
     title: 'PRECISION ON YOUR',
     highlight_text: 'WRIST.',
+    subtitle: 'Crystal AMOLED displays, aerospace titanium casings, advanced health tracking, and ultra-long 14-day battery life.',
     description: 'Crystal AMOLED displays, aerospace titanium casings, advanced health tracking, and ultra-long 14-day battery life.',
+    badge_text: 'NEXT-GEN TITANIUM WEARABLE',
+    badge: 'NEXT-GEN TITANIUM WEARABLE',
+    promotional_badge: 'NEW ARRIVAL',
+    image_url: 'https://images.unsplash.com/photo-1579586337278-3befd40fd17a?w=1200&auto=format&fit=crop&q=80',
+    desktop_image_url: 'https://images.unsplash.com/photo-1579586337278-3befd40fd17a?w=1200&auto=format&fit=crop&q=80',
+    mobile_image_url: '',
+    button_text: 'EXPLORE WATCHES',
     primary_button_text: 'EXPLORE WATCHES',
+    button_url: '/category/smart-watches',
     primary_button_link: '/category/smart-watches',
     secondary_button_text: 'VIEW BEST SELLERS',
     secondary_button_link: '/best-sellers',
-    desktop_image_url: 'https://images.unsplash.com/photo-1579586337278-3befd40fd17a?w=1200&auto=format&fit=crop&q=80',
-    mobile_image_url: '',
     features: ['AMOLED Display', 'Titanium Build', '14-Day Battery', 'IP68 Waterproof'],
-    promotional_badge: 'NEW ARRIVAL',
-    is_active: true,
+    display_order: 2,
     sort_order: 2,
+    is_active: true,
+    open_in_new_tab: false,
     autoplay_duration: 6000,
     created_at: new Date(Date.now() - 86400000).toISOString(),
     updated_at: new Date(Date.now() - 86400000).toISOString(),
   },
   {
     id: 3,
-    badge: 'PRO GAMING ARSENAL',
     title: 'DOMINATE EVERY',
     highlight_text: 'BATTLE.',
+    subtitle: 'Ultra-low latency Bluetooth 5.4, mechanical precision, and immersive studio acoustics engineered for competitive gaming.',
     description: 'Ultra-low latency Bluetooth 5.4, mechanical precision, and immersive studio acoustics engineered for competitive gaming.',
+    badge_text: 'PRO GAMING ARSENAL',
+    badge: 'PRO GAMING ARSENAL',
+    promotional_badge: 'LIMITED TIME DEAL',
+    image_url: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=1200&auto=format&fit=crop&q=80',
+    desktop_image_url: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=1200&auto=format&fit=crop&q=80',
+    mobile_image_url: '',
+    button_text: 'GAMING GEAR',
     primary_button_text: 'GAMING GEAR',
+    button_url: '/category/gaming',
     primary_button_link: '/category/gaming',
     secondary_button_text: 'HOT OFFERS',
     secondary_button_link: '/deals',
-    desktop_image_url: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=1200&auto=format&fit=crop&q=80',
-    mobile_image_url: '',
     features: ['Ultra-Low Latency', 'Studio Audio', 'Dual Mic ANC', '1-Year Warranty'],
-    promotional_badge: 'LIMITED TIME DEAL',
-    is_active: true,
+    display_order: 3,
     sort_order: 3,
+    is_active: true,
+    open_in_new_tab: false,
     autoplay_duration: 6000,
     created_at: new Date(Date.now() - 172800000).toISOString(),
     updated_at: new Date(Date.now() - 172800000).toISOString(),
   },
 ];
 
-function getLocalHeroSlides() {
-  try {
-    const raw = localStorage.getItem(LOCAL_HERO_SLIDES_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+export const INITIAL_SEED_HERO_SLIDES = INITIAL_SEED_HERO_BANNERS;
+export const INITIAL_SEED_BANNERS = INITIAL_SEED_HERO_BANNERS;
+
+let inMemoryHeroBanners = [...INITIAL_SEED_HERO_BANNERS];
+
+/**
+ * Normalize any banner/hero object into a rich unified schema
+ */
+export function normalizeBannerItem(item, defaultOrder = 1) {
+  if (!item) return null;
+  const id = item.id || (typeof item === 'object' && item.id !== undefined ? item.id : Date.now());
+  const title = (item.title ?? '').toString().trim();
+  const highlight_text = (item.highlight_text ?? '').toString().trim();
+  const subtitle = (item.subtitle ?? item.description ?? '').toString().trim();
+  const description = (item.description ?? item.subtitle ?? '').toString().trim();
+  const badge_text = (item.badge_text ?? item.badge ?? 'PREMIUM TECH').toString().trim();
+  const badge = (item.badge ?? item.badge_text ?? 'PREMIUM TECH').toString().trim();
+  const promotional_badge = (item.promotional_badge ?? '').toString().trim();
+  const image_url = (item.image_url ?? item.desktop_image_url ?? '').toString().trim();
+  const desktop_image_url = (item.desktop_image_url ?? item.image_url ?? '').toString().trim();
+  const mobile_image_url = (item.mobile_image_url ?? '').toString().trim();
+  const button_text = (item.button_text ?? item.primary_button_text ?? 'SHOP NOW').toString().trim();
+  const primary_button_text = (item.primary_button_text ?? item.button_text ?? 'SHOP NOW').toString().trim();
+  const button_url = (item.button_url ?? item.primary_button_link ?? '/shop').toString().trim();
+  const primary_button_link = (item.primary_button_link ?? item.button_url ?? '/shop').toString().trim();
+  const secondary_button_text = (item.secondary_button_text ?? 'EXPLORE DEALS').toString().trim();
+  const secondary_button_link = (item.secondary_button_link ?? '/deals').toString().trim();
+
+  let features = ['100% Original', 'Free Delivery', '7 Days Return', '24/7 Support'];
+  if (Array.isArray(item.features) && item.features.length > 0) {
+    features = item.features.map(f => String(f).trim()).filter(Boolean);
+  } else if (typeof item.features === 'string' && item.features.trim()) {
+    try {
+      if (item.features.startsWith('[')) {
+        features = JSON.parse(item.features);
+      } else {
+        features = item.features.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    } catch (e) {
+      features = item.features.split(',').map(s => s.trim()).filter(Boolean);
     }
-    localStorage.setItem(LOCAL_HERO_SLIDES_KEY, JSON.stringify(INITIAL_SEED_HERO_SLIDES));
-    return INITIAL_SEED_HERO_SLIDES;
-  } catch (e) {
-    return INITIAL_SEED_HERO_SLIDES;
   }
+
+  const orderNum = Number(item.display_order ?? item.sort_order ?? defaultOrder) || defaultOrder;
+  const is_active = item.is_active !== undefined ? Boolean(item.is_active) : true;
+  const open_in_new_tab = Boolean(item.open_in_new_tab);
+  const autoplay_duration = Number(item.autoplay_duration || 6000);
+
+  return {
+    id,
+    title,
+    highlight_text,
+    subtitle,
+    description,
+    badge_text,
+    badge,
+    promotional_badge,
+    image_url,
+    desktop_image_url,
+    mobile_image_url,
+    button_text,
+    primary_button_text,
+    button_url,
+    primary_button_link,
+    secondary_button_text,
+    secondary_button_link,
+    features,
+    display_order: orderNum,
+    sort_order: orderNum,
+    is_active,
+    open_in_new_tab,
+    autoplay_duration,
+    created_at: item.created_at || new Date().toISOString(),
+    updated_at: item.updated_at || new Date().toISOString(),
+  };
 }
 
-function setLocalHeroSlides(slides) {
-  try {
-    localStorage.setItem(LOCAL_HERO_SLIDES_KEY, JSON.stringify(slides));
-  } catch (e) {
-    console.warn('Failed to save local hero slides:', e);
+/**
+ * Broadcast event across components and tabs whenever banners are updated
+ */
+function broadcastBannersUpdated() {
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('apex_banners_updated'));
+    } catch (e) {
+      // Ignore in non-browser environments
+    }
   }
 }
 
 /**
- * Fetch active hero slides for the storefront
+ * Get unified banners from local storage with automatic legacy migration
  */
+function getUnifiedBannersFromStorage() {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      // 1. Check primary unified key
+      const rawUnified = window.localStorage.getItem(UNIFIED_HERO_BANNERS_KEY);
+      if (rawUnified) {
+        const parsed = JSON.parse(rawUnified);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          inMemoryHeroBanners = parsed.map((item, idx) => normalizeBannerItem(item, idx + 1));
+          return inMemoryHeroBanners;
+        }
+      }
+
+      // 2. Check legacy promotional banners key (where user may have saved edits like "HEAR THE DIFFERENCE")
+      const rawLegacyBanners = window.localStorage.getItem(LEGACY_BANNERS_KEY);
+      if (rawLegacyBanners) {
+        const parsedLegacy = JSON.parse(rawLegacyBanners);
+        if (Array.isArray(parsedLegacy) && parsedLegacy.length > 0) {
+          inMemoryHeroBanners = parsedLegacy.map((item, idx) => normalizeBannerItem(item, idx + 1));
+          saveUnifiedBannersToStorage(inMemoryHeroBanners);
+          return inMemoryHeroBanners;
+        }
+      }
+
+      // 3. Check legacy hero slides key
+      const rawLegacyHero = window.localStorage.getItem(LEGACY_HERO_KEY);
+      if (rawLegacyHero) {
+        const parsedHero = JSON.parse(rawLegacyHero);
+        if (Array.isArray(parsedHero) && parsedHero.length > 0) {
+          inMemoryHeroBanners = parsedHero.map((item, idx) => normalizeBannerItem(item, idx + 1));
+          saveUnifiedBannersToStorage(inMemoryHeroBanners);
+          return inMemoryHeroBanners;
+        }
+      }
+
+      // 4. Save default initial seed
+      saveUnifiedBannersToStorage(INITIAL_SEED_HERO_BANNERS);
+    }
+    return inMemoryHeroBanners;
+  } catch (e) {
+    return inMemoryHeroBanners;
+  }
+}
+
+/**
+ * Save unified banners to all storage keys for complete cross-compatibility
+ */
+function saveUnifiedBannersToStorage(banners) {
+  const normalized = (Array.isArray(banners) ? banners : [])
+    .map((b, idx) => normalizeBannerItem(b, idx + 1))
+    .sort((a, b) => a.sort_order - b.sort_order);
+
+  inMemoryHeroBanners = normalized;
+  invalidateBannersCache();
+
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const jsonStr = JSON.stringify(normalized);
+      window.localStorage.setItem(UNIFIED_HERO_BANNERS_KEY, jsonStr);
+      window.localStorage.setItem(LEGACY_BANNERS_KEY, jsonStr);
+      window.localStorage.setItem(LEGACY_HERO_KEY, jsonStr);
+    }
+  } catch (e) {
+    console.warn('Failed to save unified banners to localStorage:', e);
+  }
+
+  broadcastBannersUpdated();
+  return normalized;
+}
+
+/**
+ * Universal Fetch Function for Hero Slider and Promotional Banners
+ * @param {boolean} onlyActive - If true, returns only active banners
+ */
+/**
+ * Universal Fetch Function for Hero Slider and Promotional Banners
+ * Fetches directly from Supabase (tables or global Supabase CMS cloud store)
+ * @param {boolean} onlyActive - If true, returns only active banners
+ */
+// ── Banner query cache (prevents Hero + PromotionalBanner duplicate queries) ──
+let _bannersCachePromise = null;
+let _bannersCacheTime = 0;
+const _BANNERS_CACHE_TTL = 30000; // 30 seconds
+
+export async function fetchHeroBanners(onlyActive = true) {
+  // Only cache the storefront (active-only) path
+  if (onlyActive) {
+    const now = Date.now();
+    if (_bannersCachePromise && (now - _bannersCacheTime < _BANNERS_CACHE_TTL)) {
+      return _bannersCachePromise;
+    }
+    _bannersCacheTime = now;
+    _bannersCachePromise = _fetchHeroBannersImpl(true);
+    _bannersCachePromise.catch(() => { _bannersCachePromise = null; });
+    return _bannersCachePromise;
+  }
+  return _fetchHeroBannersImpl(onlyActive);
+}
+
+// Invalidate banner cache (called after admin writes or realtime updates)
+export function invalidateBannersCache() {
+  _bannersCachePromise = null;
+  _bannersCacheTime = 0;
+}
+
+async function _fetchHeroBannersImpl(onlyActive) {
+  let banners = [];
+
+  // 1. Try fetching from Supabase 'banners' or 'hero_slides' table
+  if (isSupabaseConfigured) {
+    try {
+      let query = supabase.from('banners').select('*').order('display_order', { ascending: true });
+      if (onlyActive) query = query.eq('is_active', true);
+      const { data, error } = await query;
+      if (!error && Array.isArray(data) && data.length > 0) {
+        banners = data.map((b, idx) => normalizeBannerItem(b, idx + 1));
+      }
+    } catch (e) {}
+
+    if (banners.length === 0) {
+      try {
+        let query = supabase.from('hero_slides').select('*').order('sort_order', { ascending: true });
+        if (onlyActive) query = query.eq('is_active', true);
+        const { data, error } = await query;
+        if (!error && Array.isArray(data) && data.length > 0) {
+          banners = data.map((b, idx) => normalizeBannerItem(b, idx + 1));
+        }
+      } catch (e) {}
+    }
+
+    // 2. Fetch from Global Supabase Cloud CMS record (accessible globally on all devices)
+    if (banners.length === 0) {
+      try {
+        const globalCms = await fetchGlobalSupabaseCMSConfig();
+        if (globalCms?.banners && Array.isArray(globalCms.banners) && globalCms.banners.length > 0) {
+          banners = globalCms.banners.map((b, idx) => normalizeBannerItem(b, idx + 1));
+          saveUnifiedBannersToStorage(banners);
+        }
+      } catch (e) {
+        console.warn('Failed to fetch banners from global Supabase CMS:', e);
+      }
+    }
+  }
+
+  // 3. Fallback to unified local storage
+  if (banners.length === 0) {
+    banners = getUnifiedBannersFromStorage();
+  }
+
+  if (onlyActive) {
+    banners = banners.filter((b) => b.is_active !== false);
+  }
+
+  return banners
+    .map((b, idx) => normalizeBannerItem(b, idx + 1))
+    .sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+}
+
+// Storefront & Admin API Aliases (All wired to the same unified store)
+export async function fetchBanners(onlyActive = true) {
+  return fetchHeroBanners(onlyActive);
+}
+
+export async function fetchAdminBanners() {
+  return fetchHeroBanners(false);
+}
+
 export async function fetchHeroSlides() {
-  if (isSupabaseConfigured) {
-    try {
-      const { data, error } = await supabase
-        .from('hero_slides')
-        .select('*')
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true })
-        .order('id', { ascending: true });
-
-      if (!error && Array.isArray(data) && data.length > 0) {
-        return data.map((s) => ({
-          ...s,
-          features: Array.isArray(s.features) ? s.features : (typeof s.features === 'string' ? JSON.parse(s.features || '[]') : []),
-        }));
-      }
-    } catch (e) {
-      console.warn('Supabase fetchHeroSlides fallback:', e.message);
-    }
-  }
-
-  const local = getLocalHeroSlides();
-  return local.filter((s) => s.is_active).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  return fetchHeroBanners(true);
 }
 
-/**
- * Fetch all hero slides for admin management
- */
 export async function fetchAdminHeroSlides() {
-  if (isSupabaseConfigured) {
-    try {
-      const { data, error } = await supabase
-        .from('hero_slides')
-        .select('*')
-        .order('sort_order', { ascending: true })
-        .order('id', { ascending: true });
-
-      if (!error && Array.isArray(data) && data.length > 0) {
-        return data.map((s) => ({
-          ...s,
-          features: Array.isArray(s.features) ? s.features : (typeof s.features === 'string' ? JSON.parse(s.features || '[]') : []),
-        }));
-      }
-    } catch (e) {
-      console.warn('Supabase fetchAdminHeroSlides fallback:', e.message);
-    }
-  }
-
-  return getLocalHeroSlides().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  return fetchHeroBanners(false);
 }
 
 /**
- * Save or update a hero slide
+ * Universal Save/Update Banner or Slide with Global Supabase Persistence
  */
-export async function saveHeroSlide(slideData) {
-  const isEditing = Boolean(slideData.id);
+export async function saveHeroBanner(bannerData) {
   const now = new Date().toISOString();
 
-  const payload = {
-    badge: slideData.badge || '',
-    title: slideData.title || '',
-    highlight_text: slideData.highlight_text || '',
-    description: slideData.description || '',
-    primary_button_text: slideData.primary_button_text || 'SHOP NOW',
-    primary_button_link: slideData.primary_button_link || '/shop',
-    secondary_button_text: slideData.secondary_button_text || 'EXPLORE DEALS',
-    secondary_button_link: slideData.secondary_button_link || '/deals',
-    desktop_image_url: slideData.desktop_image_url || '',
-    mobile_image_url: slideData.mobile_image_url || '',
-    features: Array.isArray(slideData.features) ? slideData.features : (slideData.features ? String(slideData.features).split(',').map((f) => f.trim()).filter(Boolean) : []),
-    promotional_badge: slideData.promotional_badge || '',
-    is_active: slideData.is_active !== undefined ? Boolean(slideData.is_active) : true,
-    sort_order: Number(slideData.sort_order || 1),
-    autoplay_duration: Number(slideData.autoplay_duration || 6000),
-    updated_at: now,
-  };
-
+  // Retrieve current list from Supabase cloud first for cross-device consistency
+  let currentList = [];
   if (isSupabaseConfigured) {
-    try {
-      if (isEditing) {
-        const result = await safeSupabaseMutation('hero_slides', 'update', payload, 'id', slideData.id);
-        if (result) {
-          const local = getLocalHeroSlides();
-          const updated = local.map((s) => (String(s.id) === String(slideData.id) ? { ...s, ...payload, id: slideData.id } : s));
-          setLocalHeroSlides(updated);
-          return { ...payload, id: slideData.id };
-        }
-      } else {
-        const insertPayload = { ...payload, created_at: now };
-        const result = await safeSupabaseMutation('hero_slides', 'insert', insertPayload);
-        if (result) {
-          const local = getLocalHeroSlides();
-          const created = { ...insertPayload, id: result.id || Date.now() };
-          setLocalHeroSlides([...local, created]);
-          return created;
-        }
-      }
-    } catch (e) {
-      console.warn('Supabase saveHeroSlide fallback:', e.message);
+    const cloud = await fetchGlobalSupabaseCMSConfig();
+    if (cloud?.banners && Array.isArray(cloud.banners) && cloud.banners.length > 0) {
+      currentList = cloud.banners.map((b, idx) => normalizeBannerItem(b, idx + 1));
     }
   }
-
-  const local = getLocalHeroSlides();
-  if (isEditing) {
-    const updated = local.map((s) => (String(s.id) === String(slideData.id) ? { ...s, ...payload, id: slideData.id } : s));
-    setLocalHeroSlides(updated);
-    return { ...payload, id: slideData.id };
-  } else {
-    const newId = Date.now();
-    const created = { ...payload, id: newId, created_at: now };
-    setLocalHeroSlides([...local, created]);
-    return created;
+  if (currentList.length === 0) {
+    currentList = getUnifiedBannersFromStorage();
   }
+
+  const existsIndex = bannerData.id ? currentList.findIndex((b) => String(b.id) === String(bannerData.id)) : -1;
+  const isEditing = existsIndex >= 0;
+
+  const normalized = normalizeBannerItem({
+    ...bannerData,
+    id: bannerData.id || (isEditing ? currentList[existsIndex].id : Date.now()),
+    updated_at: now,
+    created_at: bannerData.created_at || (isEditing ? currentList[existsIndex].created_at : now),
+  }, isEditing ? (currentList[existsIndex].sort_order || existsIndex + 1) : currentList.length + 1);
+
+  // 1. Attempt Supabase table mutation if configured
+  if (isSupabaseConfigured) {
+    try {
+      const dbPayload = {
+        title: normalized.title,
+        subtitle: normalized.subtitle,
+        badge_text: normalized.badge_text,
+        image_url: normalized.image_url,
+        button_text: normalized.button_text,
+        button_url: normalized.button_url,
+        open_in_new_tab: normalized.open_in_new_tab,
+        display_order: normalized.display_order,
+        is_active: normalized.is_active,
+        updated_at: now,
+      };
+
+      if (isEditing) {
+        await safeSupabaseMutation('banners', 'update', dbPayload, 'id', normalized.id);
+      } else {
+        dbPayload.created_at = now;
+        await safeSupabaseMutation('banners', 'insert', dbPayload);
+      }
+    } catch (e) {}
+
+    try {
+      const heroPayload = {
+        title: normalized.title,
+        highlight_text: normalized.highlight_text,
+        badge: normalized.badge,
+        description: normalized.description,
+        primary_button_text: normalized.primary_button_text,
+        primary_button_link: normalized.primary_button_link,
+        secondary_button_text: normalized.secondary_button_text,
+        secondary_button_link: normalized.secondary_button_link,
+        desktop_image_url: normalized.desktop_image_url,
+        mobile_image_url: normalized.mobile_image_url,
+        features: normalized.features,
+        promotional_badge: normalized.promotional_badge,
+        sort_order: normalized.sort_order,
+        is_active: normalized.is_active,
+        autoplay_duration: normalized.autoplay_duration,
+        updated_at: now,
+      };
+
+      if (isEditing) {
+        await safeSupabaseMutation('hero_slides', 'update', heroPayload, 'id', normalized.id);
+      } else {
+        heroPayload.created_at = now;
+        await safeSupabaseMutation('hero_slides', 'insert', heroPayload);
+      }
+    } catch (e) {}
+  }
+
+  // 2. Update list in memory & local storage
+  let updatedList;
+  if (isEditing) {
+    updatedList = currentList.map((b, idx) => (idx === existsIndex ? { ...b, ...normalized } : b));
+  } else {
+    updatedList = [...currentList, normalized];
+  }
+
+  saveUnifiedBannersToStorage(updatedList);
+
+  // 3. Persist to Global Supabase Cloud CMS record (accessible globally to all devices)
+  if (isSupabaseConfigured) {
+    await saveGlobalSupabaseCMSConfig({ banners: updatedList });
+  }
+
+  broadcastBannersUpdated();
+  return normalized;
+}
+
+export async function saveBanner(bannerData) {
+  return saveHeroBanner(bannerData);
+}
+
+export async function saveHeroSlide(slideData) {
+  return saveHeroBanner(slideData);
 }
 
 /**
- * Delete a hero slide by ID
+ * Universal Delete Banner / Slide
  */
-export async function deleteHeroSlide(slideId) {
+export async function deleteHeroBanner(bannerId) {
   if (isSupabaseConfigured) {
     try {
-      const { error } = await supabase.from('hero_slides').delete().eq('id', slideId);
-      if (error) console.warn('Supabase deleteHeroSlide error:', error.message);
-    } catch (e) {
-      console.warn('Supabase deleteHeroSlide fallback:', e.message);
-    }
+      await supabase.from('banners').delete().eq('id', bannerId);
+    } catch (e) {}
+    try {
+      await supabase.from('hero_slides').delete().eq('id', bannerId);
+    } catch (e) {}
   }
 
-  const local = getLocalHeroSlides();
-  setLocalHeroSlides(local.filter((s) => String(s.id) !== String(slideId)));
+  let currentList = [];
+  if (isSupabaseConfigured) {
+    const cloud = await fetchGlobalSupabaseCMSConfig();
+    if (cloud?.banners && Array.isArray(cloud.banners) && cloud.banners.length > 0) {
+      currentList = cloud.banners.map((b, idx) => normalizeBannerItem(b, idx + 1));
+    }
+  }
+  if (currentList.length === 0) {
+    currentList = getUnifiedBannersFromStorage();
+  }
+
+  const filtered = currentList.filter((b) => String(b.id) !== String(bannerId));
+  saveUnifiedBannersToStorage(filtered);
+
+  if (isSupabaseConfigured) {
+    await saveGlobalSupabaseCMSConfig({ banners: filtered });
+  }
+
+  broadcastBannersUpdated();
   return true;
 }
 
-/**
- * Toggle hero slide active status
- */
-export async function toggleHeroSlideStatus(slideId, isActive) {
-  if (isSupabaseConfigured) {
-    try {
-      await safeSupabaseMutation('hero_slides', 'update', { 
-        is_active: isActive, 
-        updated_at: new Date().toISOString() 
-      }, 'id', slideId);
-    } catch (e) {
-      console.warn('Supabase toggleHeroSlideStatus fallback:', e.message);
-    }
-  }
+export async function deleteBanner(bannerId) {
+  return deleteHeroBanner(bannerId);
+}
 
-  const local = getLocalHeroSlides();
-  const updated = local.map((s) => (String(s.id) === String(slideId) ? { ...s, is_active: isActive, updated_at: new Date().toISOString() } : s));
-  setLocalHeroSlides(updated);
-  return updated.find((s) => String(s.id) === String(slideId)) || { id: slideId, is_active: isActive };
+export async function deleteHeroSlide(slideId) {
+  return deleteHeroBanner(slideId);
 }
 
 /**
- * Update display order for multiple hero slides
+ * Universal Toggle Active Status
  */
-export async function updateHeroSlidesOrder(slidesList) {
-  const local = getLocalHeroSlides();
-  const updatedLocal = local.map((s) => {
-    const match = slidesList.find((item) => String(item.id) === String(s.id));
-    return match ? { ...s, sort_order: match.sort_order } : s;
-  });
-  setLocalHeroSlides(updatedLocal);
+export async function toggleHeroBannerStatus(bannerId, isActive) {
+  const now = new Date().toISOString();
 
   if (isSupabaseConfigured) {
-    for (const s of slidesList) {
+    try {
+      await safeSupabaseMutation('banners', 'update', { is_active: isActive, updated_at: now }, 'id', bannerId);
+    } catch (e) {}
+    try {
+      await safeSupabaseMutation('hero_slides', 'update', { is_active: isActive, updated_at: now }, 'id', bannerId);
+    } catch (e) {}
+  }
+
+  let currentList = [];
+  if (isSupabaseConfigured) {
+    const cloud = await fetchGlobalSupabaseCMSConfig();
+    if (cloud?.banners && Array.isArray(cloud.banners) && cloud.banners.length > 0) {
+      currentList = cloud.banners.map((b, idx) => normalizeBannerItem(b, idx + 1));
+    }
+  }
+  if (currentList.length === 0) {
+    currentList = getUnifiedBannersFromStorage();
+  }
+
+  const updated = currentList.map((b) =>
+    String(b.id) === String(bannerId) ? { ...b, is_active: isActive, updated_at: now } : b
+  );
+  saveUnifiedBannersToStorage(updated);
+
+  if (isSupabaseConfigured) {
+    await saveGlobalSupabaseCMSConfig({ banners: updated });
+  }
+
+  broadcastBannersUpdated();
+  return updated.find((b) => String(b.id) === String(bannerId)) || { id: bannerId, is_active: isActive };
+}
+
+export async function toggleBannerStatus(bannerId, isActive) {
+  return toggleHeroBannerStatus(bannerId, isActive);
+}
+
+export async function toggleHeroSlideStatus(slideId, isActive) {
+  return toggleHeroBannerStatus(slideId, isActive);
+}
+
+/**
+ * Universal Reorder Banners / Slides
+ */
+export async function updateHeroBannersOrder(bannersList) {
+  let currentList = [];
+  if (isSupabaseConfigured) {
+    const cloud = await fetchGlobalSupabaseCMSConfig();
+    if (cloud?.banners && Array.isArray(cloud.banners) && cloud.banners.length > 0) {
+      currentList = cloud.banners.map((b, idx) => normalizeBannerItem(b, idx + 1));
+    }
+  }
+  if (currentList.length === 0) {
+    currentList = getUnifiedBannersFromStorage();
+  }
+
+  const updated = currentList.map((b) => {
+    const match = bannersList.find((item) => String(item.id) === String(b.id));
+    if (match) {
+      const order = Number(match.display_order ?? match.sort_order ?? b.sort_order);
+      return { ...b, display_order: order, sort_order: order };
+    }
+    return b;
+  });
+
+  saveUnifiedBannersToStorage(updated);
+
+  if (isSupabaseConfigured) {
+    for (const b of bannersList) {
+      const order = Number(b.display_order ?? b.sort_order ?? 1);
       try {
-        await supabase.from('hero_slides').update({ sort_order: s.sort_order }).eq('id', s.id);
+        await supabase.from('banners').update({ display_order: order }).eq('id', b.id);
+      } catch (e) {}
+      try {
+        await supabase.from('hero_slides').update({ sort_order: order }).eq('id', b.id);
+      } catch (e) {}
+    }
+    await saveGlobalSupabaseCMSConfig({ banners: updated });
+  }
+
+  broadcastBannersUpdated();
+  return updated;
+}
+
+export async function updateBannersOrder(bannersList) {
+  return updateHeroBannersOrder(bannersList);
+}
+
+export async function updateHeroSlidesOrder(slidesList) {
+  return updateHeroBannersOrder(slidesList);
+}
+
+// ==========================================
+// 6. SOCIAL MEDIA GALLERY API (GLOBAL SUPABASE PERSISTENCE)
+// ==========================================
+
+export const INITIAL_SEED_SOCIAL_GALLERY = [
+  {
+    id: 1,
+    image_url: 'https://i.pinimg.com/736x/4e/b7/89/4eb789b7c3517d3b6919af5f298b19d9.jpg',
+    alt_text: 'APEX Titanium Series Setup',
+    caption: 'Cyberpunk audio setup with APEX flagship gear.',
+    link_url: 'https://www.instagram.com/apexstor.pk/',
+    platform: 'Instagram',
+    sort_order: 1,
+    is_active: true,
+    created_at: new Date(Date.now() - 500000000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 2,
+    image_url: 'https://i.pinimg.com/736x/87/3e/60/873e6066bb1b22f18075278e9111b505.jpg',
+    alt_text: 'APEX Smart Watch Pro Edition',
+    caption: 'Precision titanium on your wrist.',
+    link_url: 'https://www.instagram.com/apexstor.pk/',
+    platform: 'Instagram',
+    sort_order: 2,
+    is_active: true,
+    created_at: new Date(Date.now() - 400000000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 3,
+    image_url: 'https://i.pinimg.com/736x/dc/d1/83/dcd18343dc89c7f845a52db0f38d90c5.jpg',
+    alt_text: 'APEX Zero Latency Gaming Gear',
+    caption: 'Built for competitive champions.',
+    link_url: 'https://www.instagram.com/apexstor.pk/',
+    platform: 'Instagram',
+    sort_order: 3,
+    is_active: true,
+    created_at: new Date(Date.now() - 300000000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 4,
+    image_url: 'https://i.pinimg.com/736x/59/db/4f/59db4f2dd6a94b124931caa92eb9a72f.jpg',
+    alt_text: 'APEX Wireless ANC Acoustics',
+    caption: 'Hear every detail in crystal fidelity.',
+    link_url: 'https://www.instagram.com/apexstor.pk/',
+    platform: 'Instagram',
+    sort_order: 4,
+    is_active: true,
+    created_at: new Date(Date.now() - 200000000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 5,
+    image_url: 'https://i.pinimg.com/736x/f4/ff/52/f4ff5250e2a14179e4647e51a6f4320c.jpg',
+    alt_text: 'APEX RGB Battle Station',
+    caption: 'Level up your gaming experience.',
+    link_url: 'https://www.instagram.com/apexstor.pk/',
+    platform: 'Instagram',
+    sort_order: 5,
+    is_active: true,
+    created_at: new Date(Date.now() - 100000000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 6,
+    image_url: 'https://i.pinimg.com/736x/a0/a1/82/a0a182afc8d3c2206866d3eb91bbb096.jpg',
+    alt_text: 'APEX Lifestyle & EDC Accessories',
+    caption: 'Minimalist black aesthetic EDC gear.',
+    link_url: 'https://www.instagram.com/apexstor.pk/',
+    platform: 'Instagram',
+    sort_order: 6,
+    is_active: true,
+    created_at: new Date(Date.now() - 50000000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
+
+const LOCAL_SOCIAL_GALLERY_KEY = 'apex_social_gallery';
+let inMemorySocialGallery = [...INITIAL_SEED_SOCIAL_GALLERY];
+
+// Query Cache for storefront
+let _socialGalleryCachePromise = null;
+let _socialGalleryCacheTime = 0;
+const _SOCIAL_GALLERY_CACHE_TTL = 30000;
+
+export function invalidateSocialGalleryCache() {
+  _socialGalleryCachePromise = null;
+  _socialGalleryCacheTime = 0;
+}
+
+export function normalizeSocialGalleryItem(item, defaultOrder = 1) {
+  if (!item) return null;
+  const id = item.id || (typeof item === 'object' && item.id !== undefined ? item.id : Date.now());
+  const image_url = (item.image_url ?? '').toString().trim();
+  const alt_text = (item.alt_text ?? 'APEX Store Social Post').toString().trim();
+  const caption = (item.caption ?? '').toString().trim();
+  const link_url = (item.link_url ?? 'https://www.instagram.com/apexstor.pk/').toString().trim();
+  const platform = (item.platform ?? 'Instagram').toString().trim();
+  const sort_order = Number(item.sort_order ?? item.display_order ?? defaultOrder) || defaultOrder;
+  const is_active = item.is_active !== undefined ? Boolean(item.is_active) : true;
+  const created_at = item.created_at || new Date().toISOString();
+  const updated_at = item.updated_at || new Date().toISOString();
+
+  return {
+    id,
+    image_url,
+    alt_text,
+    caption,
+    link_url,
+    platform,
+    sort_order,
+    is_active,
+    created_at,
+    updated_at,
+  };
+}
+
+function broadcastSocialGalleryUpdated() {
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('apex_social_gallery_updated'));
+    } catch (e) {}
+  }
+}
+
+function getLocalSocialGalleryFromStorage() {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem(LOCAL_SOCIAL_GALLERY_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          inMemorySocialGallery = parsed.map((item, idx) => normalizeSocialGalleryItem(item, idx + 1));
+          return inMemorySocialGallery;
+        }
+      }
+      saveLocalSocialGalleryToStorage(INITIAL_SEED_SOCIAL_GALLERY);
+    }
+    return inMemorySocialGallery;
+  } catch (e) {
+    return inMemorySocialGallery;
+  }
+}
+
+function saveLocalSocialGalleryToStorage(items) {
+  const normalized = (Array.isArray(items) ? items : [])
+    .map((b, idx) => normalizeSocialGalleryItem(b, idx + 1))
+    .sort((a, b) => a.sort_order - b.sort_order);
+
+  inMemorySocialGallery = normalized;
+  invalidateSocialGalleryCache();
+
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(LOCAL_SOCIAL_GALLERY_KEY, JSON.stringify(normalized));
+    }
+  } catch (e) {
+    console.warn('Failed to save social gallery to localStorage:', e);
+  }
+
+  broadcastSocialGalleryUpdated();
+  return normalized;
+}
+
+export async function fetchSocialGallery(onlyActive = true) {
+  if (onlyActive) {
+    const now = Date.now();
+    if (_socialGalleryCachePromise && (now - _socialGalleryCacheTime < _SOCIAL_GALLERY_CACHE_TTL)) {
+      return _socialGalleryCachePromise;
+    }
+    _socialGalleryCacheTime = now;
+    _socialGalleryCachePromise = _fetchSocialGalleryImpl(true);
+    _socialGalleryCachePromise.catch(() => { _socialGalleryCachePromise = null; });
+    return _socialGalleryCachePromise;
+  }
+  return _fetchSocialGalleryImpl(onlyActive);
+}
+
+export async function fetchAdminSocialGallery() {
+  return _fetchSocialGalleryImpl(false);
+}
+
+async function _fetchSocialGalleryImpl(onlyActive) {
+  let items = [];
+
+  // 1. Try Supabase dedicated table 'social_gallery'
+  if (isSupabaseConfigured) {
+    try {
+      let query = supabase.from('social_gallery').select('*').order('sort_order', { ascending: true });
+      if (onlyActive) query = query.eq('is_active', true);
+      const { data, error } = await query;
+      if (!error && Array.isArray(data) && data.length > 0) {
+        items = data.map((item, idx) => normalizeSocialGalleryItem(item, idx + 1));
+      }
+    } catch (e) {}
+
+    // 2. Try global Supabase Cloud CMS record
+    if (items.length === 0) {
+      try {
+        const globalCms = await fetchGlobalSupabaseCMSConfig();
+        if (globalCms?.social_gallery && Array.isArray(globalCms.social_gallery) && globalCms.social_gallery.length > 0) {
+          items = globalCms.social_gallery.map((item, idx) => normalizeSocialGalleryItem(item, idx + 1));
+          saveLocalSocialGalleryToStorage(items);
+        }
       } catch (e) {
-        console.warn('Supabase update hero slides order error:', e);
+        console.warn('Failed to fetch social gallery from global Supabase CMS:', e);
       }
     }
   }
 
-  return updatedLocal;
+  // 3. Fallback to Local Storage / Initial Seed
+  if (items.length === 0) {
+    items = getLocalSocialGalleryFromStorage();
+  }
+
+  if (onlyActive) {
+    items = items.filter((item) => item.is_active !== false);
+  }
+
+  return items
+    .map((item, idx) => normalizeSocialGalleryItem(item, idx + 1))
+    .sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
 }
 
+export async function saveSocialGalleryItem(itemData) {
+  const now = new Date().toISOString();
 
+  // Retrieve current list from Supabase cloud first for cross-device consistency
+  let currentList = [];
+  if (isSupabaseConfigured) {
+    const cloud = await fetchGlobalSupabaseCMSConfig();
+    if (cloud?.social_gallery && Array.isArray(cloud.social_gallery) && cloud.social_gallery.length > 0) {
+      currentList = cloud.social_gallery.map((b, idx) => normalizeSocialGalleryItem(b, idx + 1));
+    }
+  }
+  if (currentList.length === 0) {
+    currentList = getLocalSocialGalleryFromStorage();
+  }
+
+  let updatedList = [];
+  const normalizedItem = normalizeSocialGalleryItem(itemData, currentList.length + 1);
+  normalizedItem.updated_at = now;
+
+  const isExisting = currentList.some((b) => String(b.id) === String(normalizedItem.id));
+
+  if (isExisting) {
+    updatedList = currentList.map((b) => (String(b.id) === String(normalizedItem.id) ? { ...b, ...normalizedItem } : b));
+  } else {
+    normalizedItem.id = normalizedItem.id || Date.now();
+    normalizedItem.created_at = normalizedItem.created_at || now;
+    normalizedItem.sort_order = normalizedItem.sort_order || currentList.length + 1;
+    updatedList = [...currentList, normalizedItem];
+  }
+
+  // 1. Sync to Supabase table
+  if (isSupabaseConfigured) {
+    try {
+      const payload = {
+        image_url: normalizedItem.image_url,
+        alt_text: normalizedItem.alt_text,
+        caption: normalizedItem.caption,
+        link_url: normalizedItem.link_url,
+        platform: normalizedItem.platform,
+        sort_order: normalizedItem.sort_order,
+        is_active: normalizedItem.is_active,
+        updated_at: now,
+      };
+
+      if (isExisting && typeof normalizedItem.id === 'number') {
+        await supabase.from('social_gallery').update(payload).eq('id', normalizedItem.id);
+      } else {
+        await supabase.from('social_gallery').upsert({ id: normalizedItem.id, ...payload });
+      }
+    } catch (e) {
+      console.warn('[Supabase Table Fallback] Table social_gallery update warning:', e.message);
+    }
+
+    // 2. Persist to Global Supabase Cloud Record
+    await saveGlobalSupabaseCMSConfig({ social_gallery: updatedList });
+  }
+
+  // 3. Update localStorage & memory
+  saveLocalSocialGalleryToStorage(updatedList);
+  return normalizedItem;
+}
+
+export async function deleteSocialGalleryItem(id) {
+  let currentList = [];
+  if (isSupabaseConfigured) {
+    const cloud = await fetchGlobalSupabaseCMSConfig();
+    if (cloud?.social_gallery && Array.isArray(cloud.social_gallery) && cloud.social_gallery.length > 0) {
+      currentList = cloud.social_gallery.map((b, idx) => normalizeSocialGalleryItem(b, idx + 1));
+    }
+  }
+  if (currentList.length === 0) {
+    currentList = getLocalSocialGalleryFromStorage();
+  }
+
+  const target = currentList.find((b) => String(b.id) === String(id));
+  const filtered = currentList.filter((b) => String(b.id) !== String(id));
+
+  // Safely delete associated image from Supabase Storage if it was uploaded
+  if (target?.image_url && isSupabaseConfigured) {
+    try {
+      if (target.image_url.includes('/social/')) {
+        const parts = target.image_url.split('/social/');
+        if (parts.length > 1) {
+          const filePath = `social/${parts[1].split('?')[0]}`;
+          await supabase.storage.from('site-images').remove([filePath]);
+          await supabase.storage.from('product-images').remove([filePath]);
+        }
+      }
+    } catch (e) {}
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('social_gallery').delete().eq('id', id);
+    } catch (e) {}
+    await saveGlobalSupabaseCMSConfig({ social_gallery: filtered });
+  }
+
+  saveLocalSocialGalleryToStorage(filtered);
+  return true;
+}
+
+export async function toggleSocialGalleryStatus(id) {
+  let currentList = [];
+  if (isSupabaseConfigured) {
+    const cloud = await fetchGlobalSupabaseCMSConfig();
+    if (cloud?.social_gallery && Array.isArray(cloud.social_gallery) && cloud.social_gallery.length > 0) {
+      currentList = cloud.social_gallery.map((b, idx) => normalizeSocialGalleryItem(b, idx + 1));
+    }
+  }
+  if (currentList.length === 0) {
+    currentList = getLocalSocialGalleryFromStorage();
+  }
+
+  let newStatus = true;
+  const updated = currentList.map((b) => {
+    if (String(b.id) === String(id)) {
+      newStatus = !b.is_active;
+      return { ...b, is_active: newStatus, updated_at: new Date().toISOString() };
+    }
+    return b;
+  });
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('social_gallery').update({ is_active: newStatus }).eq('id', id);
+    } catch (e) {}
+    await saveGlobalSupabaseCMSConfig({ social_gallery: updated });
+  }
+
+  saveLocalSocialGalleryToStorage(updated);
+  return newStatus;
+}
+
+export async function updateSocialGalleryOrder(itemsList) {
+  let currentList = [];
+  if (isSupabaseConfigured) {
+    const cloud = await fetchGlobalSupabaseCMSConfig();
+    if (cloud?.social_gallery && Array.isArray(cloud.social_gallery) && cloud.social_gallery.length > 0) {
+      currentList = cloud.social_gallery.map((b, idx) => normalizeSocialGalleryItem(b, idx + 1));
+    }
+  }
+  if (currentList.length === 0) {
+    currentList = getLocalSocialGalleryFromStorage();
+  }
+
+  const updated = currentList.map((b) => {
+    const match = itemsList.find((item) => String(item.id) === String(b.id));
+    if (match) {
+      const order = Number(match.sort_order ?? match.display_order ?? b.sort_order);
+      return { ...b, sort_order: order };
+    }
+    return b;
+  });
+
+  saveLocalSocialGalleryToStorage(updated);
+
+  if (isSupabaseConfigured) {
+    for (const b of itemsList) {
+      const order = Number(b.sort_order ?? b.display_order ?? 1);
+      try {
+        await supabase.from('social_gallery').update({ sort_order: order }).eq('id', b.id);
+      } catch (e) {}
+    }
+    await saveGlobalSupabaseCMSConfig({ social_gallery: updated });
+  }
+
+  broadcastSocialGalleryUpdated();
+  return updated;
+}
+
+export async function uploadSocialGalleryImage(file) {
+  return uploadImageToSupabase(file, 'social');
+}
 

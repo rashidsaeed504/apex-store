@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight, ArrowUpRight } from "lucide-react";
 import { fetchCategories } from "../../services/api";
@@ -14,14 +13,12 @@ const FeaturedCategories = () => {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  // Mobile 2x2 Carousel State
+  // Mobile 2x2 Carousel State (MANUAL swipe only — no autoplay)
   const [currentMobilePage, setCurrentMobilePage] = useState(0);
-  const [isMobilePaused, setIsMobilePaused] = useState(false);
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
   const touchEndX = useRef(null);
   const touchEndY = useRef(null);
-  const resumeTimerRef = useRef(null);
 
   useEffect(() => {
     async function loadData() {
@@ -49,17 +46,6 @@ const FeaturedCategories = () => {
     }
     return pages;
   }, [categoriesList]);
-
-  // Mobile Auto-rotation (6s)
-  useEffect(() => {
-    if (mobilePages.length <= 1 || isMobilePaused) return;
-
-    const interval = setInterval(() => {
-      setCurrentMobilePage((prev) => (prev + 1) % mobilePages.length);
-    }, 6000);
-
-    return () => clearInterval(interval);
-  }, [mobilePages.length, isMobilePaused]);
 
   // Desktop scroll checkers
   const checkDesktopScrollability = () => {
@@ -98,10 +84,8 @@ const FeaturedCategories = () => {
     el.scrollBy({ left: amount, behavior: "smooth" });
   };
 
-  // Mobile Touch Handlers
+  // Mobile Touch Handlers (manual swipe only)
   const handleTouchStart = (e) => {
-    if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    setIsMobilePaused(true);
     touchStartX.current = e.targetTouches[0].clientX;
     touchStartY.current = e.targetTouches[0].clientY;
     touchEndX.current = null;
@@ -139,11 +123,6 @@ const FeaturedCategories = () => {
     touchStartY.current = null;
     touchEndX.current = null;
     touchEndY.current = null;
-
-    // Resume auto-play after 4.5s
-    resumeTimerRef.current = setTimeout(() => {
-      setIsMobilePaused(false);
-    }, 4500);
   };
 
   return (
@@ -175,14 +154,14 @@ const FeaturedCategories = () => {
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
-              onMouseEnter={() => setIsMobilePaused(true)}
-              onMouseLeave={() => setIsMobilePaused(false)}
             >
               <div className="overflow-hidden">
-                <motion.div
+                <div
                   className="flex items-start"
-                  animate={{ x: `-${currentMobilePage * 100}%` }}
-                  transition={{ duration: 0.35, ease: [0.25, 1, 0.5, 1] }}
+                  style={{
+                    transform: `translate3d(-${currentMobilePage * 100}%, 0, 0)`,
+                    transition: 'transform 400ms cubic-bezier(0.25, 1, 0.5, 1)',
+                  }}
                 >
                   {mobilePages.map((page, pageIndex) => (
                     <div
@@ -216,6 +195,8 @@ const FeaturedCategories = () => {
                               src={catImage}
                               alt={category.name}
                               loading="lazy"
+                              width={400}
+                              height={300}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90"
                               onError={(e) => {
                                 e.currentTarget.src =
@@ -223,15 +204,12 @@ const FeaturedCategories = () => {
                               }}
                             />
 
-                            {/* Bottom-to-Top Dark Gradient Overlay */}
-                            {/* <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/50 to-transparent pointer-events-none" /> */}
-
                             {/* Top Right Mini Red Arrow Indicator */}
                             <div className="absolute top-2.5 right-2.5 w-6 h-6 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/80 group-hover:text-apex-red group-hover:border-apex-red/50 transition-colors">
                               <ArrowUpRight className="w-3 h-3" />
                             </div>
 
-                            {/* Category Name & Subtitle at Left-Bottom with Breathing Room */}
+                            {/* Category Name & Subtitle at Left-Bottom */}
                             <div className="absolute bottom-0 left-0 right-0 p-3.5 pb-4 flex flex-col justify-end z-10 text-left">
                               <h3 className="text-xs font-black uppercase tracking-wider text-white group-hover:text-apex-red transition-colors leading-tight line-clamp-1">
                                 {category.name}
@@ -245,7 +223,7 @@ const FeaturedCategories = () => {
                       })}
                     </div>
                   ))}
-                </motion.div>
+                </div>
               </div>
 
               {/* Mobile Pagination Indicator Dots */}
@@ -318,12 +296,8 @@ const FeaturedCategories = () => {
                     "Explore collection";
 
                   return (
-                    <motion.div
+                    <div
                       key={category.id || slug || index}
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true, margin: "-20px" }}
-                      transition={{ duration: 0.4, delay: index * 0.05 }}
                       className="category-carousel-card flex-shrink-0 snap-start"
                     >
                       <Link
@@ -335,6 +309,8 @@ const FeaturedCategories = () => {
                           src={catImage}
                           alt={category.name}
                           loading="lazy"
+                          width={400}
+                          height={300}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100"
                           onError={(e) => {
                             e.currentTarget.src =
@@ -342,15 +318,12 @@ const FeaturedCategories = () => {
                           }}
                         />
 
-                        {/* Bottom-to-Top Dark Gradient Overlay
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-transparent pointer-events-none transition-opacity duration-300 group-hover:from-black/90" /> */}
-
                         {/* Top-Right Floating Explore Badge */}
                         <div className="absolute top-3.5 right-3.5 w-7 h-7 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 group-hover:scale-105 group-hover:bg-apex-red group-hover:border-apex-red text-white transition-all duration-300 z-10 shadow-lg">
                           <ArrowUpRight className="w-3.5 h-3.5" />
                         </div>
 
-                        {/* Category Name & Subtitle at Left-Bottom with Extra Breathing Room */}
+                        {/* Category Name & Subtitle at Left-Bottom */}
                         <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6 pb-5 sm:pb-6 flex flex-col justify-end z-10 transform group-hover:-translate-y-0.5 transition-transform duration-300 text-left">
                           <h3 className="text-sm sm:text-base md:text-lg font-black uppercase tracking-wider text-white group-hover:text-apex-red transition-colors leading-tight line-clamp-1">
                             {category.name}
@@ -360,7 +333,7 @@ const FeaturedCategories = () => {
                           </p>
                         </div>
                       </Link>
-                    </motion.div>
+                    </div>
                   );
                 })}
               </div>

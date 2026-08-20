@@ -58,6 +58,7 @@ import AdminCategories from './pages/admin/AdminCategories';
 import AdminOrders from './pages/admin/AdminOrders';
 import AdminReviews from './pages/admin/AdminReviews';
 import AdminCustomers from './pages/admin/AdminCustomers';
+import AdminSocialGallery from './pages/admin/AdminSocialGallery';
 
 export default function App() {
   return (
@@ -124,6 +125,7 @@ export default function App() {
                       <Route path="hero-slider" element={<AdminHeroSlider />} />
                       <Route path="banners" element={<AdminBanners />} />
                       <Route path="special-offer" element={<AdminSpecialOffer />} />
+                      <Route path="social-gallery" element={<AdminSocialGallery />} />
                       <Route path="products" element={<AdminProducts />} />
                       <Route path="categories" element={<AdminCategories />} />
                       <Route path="orders" element={<AdminOrders />} />
