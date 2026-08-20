@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowUpRight } from 'lucide-react';
-import { fetchCategories } from '../../services/api';
-import SectionHeader from './SectionHeader';
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Link } from "react-router-dom";
+import { ChevronLeft, ChevronRight, ArrowUpRight } from "lucide-react";
+import { fetchCategories } from "../../services/api";
+import SectionHeader from "./SectionHeader";
 
 const FeaturedCategories = () => {
   const [categoriesList, setCategoriesList] = useState([]);
@@ -28,10 +28,12 @@ const FeaturedCategories = () => {
       setLoading(true);
       try {
         const data = await fetchCategories();
-        const activeOnly = (data || []).filter((c) => c.is_active !== false && c.isActive !== false);
+        const activeOnly = (data || []).filter(
+          (c) => c.is_active !== false && c.isActive !== false,
+        );
         setCategoriesList(activeOnly);
       } catch (err) {
-        console.warn('Failed to load categories:', err);
+        console.warn("Failed to load categories:", err);
       } finally {
         setLoading(false);
       }
@@ -77,21 +79,23 @@ const FeaturedCategories = () => {
   useEffect(() => {
     const el = desktopScrollRef.current;
     if (!el) return;
-    el.addEventListener('scroll', checkDesktopScrollability, { passive: true });
-    window.addEventListener('resize', checkDesktopScrollability);
+    el.addEventListener("scroll", checkDesktopScrollability, { passive: true });
+    window.addEventListener("resize", checkDesktopScrollability);
     return () => {
-      el.removeEventListener('scroll', checkDesktopScrollability);
-      window.removeEventListener('resize', checkDesktopScrollability);
+      el.removeEventListener("scroll", checkDesktopScrollability);
+      window.removeEventListener("resize", checkDesktopScrollability);
     };
   }, [loading]);
 
   const desktopScroll = (direction) => {
     const el = desktopScrollRef.current;
     if (!el) return;
-    const cardWidth = el.querySelector('.category-carousel-card')?.offsetWidth || 280;
+    const cardWidth =
+      el.querySelector(".category-carousel-card")?.offsetWidth || 280;
     const gap = 20;
-    const amount = direction === 'left' ? -(cardWidth + gap) * 2 : (cardWidth + gap) * 2;
-    el.scrollBy({ left: amount, behavior: 'smooth' });
+    const amount =
+      direction === "left" ? -(cardWidth + gap) * 2 : (cardWidth + gap) * 2;
+    el.scrollBy({ left: amount, behavior: "smooth" });
   };
 
   // Mobile Touch Handlers
@@ -112,9 +116,10 @@ const FeaturedCategories = () => {
   const handleTouchEnd = () => {
     if (touchStartX.current !== null && touchEndX.current !== null) {
       const deltaX = touchStartX.current - touchEndX.current;
-      const deltaY = (touchStartY.current !== null && touchEndY.current !== null) 
-        ? Math.abs(touchStartY.current - touchEndY.current) 
-        : 0;
+      const deltaY =
+        touchStartY.current !== null && touchEndY.current !== null
+          ? Math.abs(touchStartY.current - touchEndY.current)
+          : 0;
 
       // Only trigger if horizontal movement is dominant
       if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > deltaY) {
@@ -123,7 +128,9 @@ const FeaturedCategories = () => {
           setCurrentMobilePage((prev) => (prev + 1) % mobilePages.length);
         } else {
           // Swiped Right -> Prev page
-          setCurrentMobilePage((prev) => (prev - 1 + mobilePages.length) % mobilePages.length);
+          setCurrentMobilePage(
+            (prev) => (prev - 1 + mobilePages.length) % mobilePages.length,
+          );
         }
       }
     }
@@ -142,17 +149,20 @@ const FeaturedCategories = () => {
   return (
     <section className="py-10 sm:py-16 md:py-20 bg-[#050505] relative z-10 border-t border-white/5">
       <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <SectionHeader 
-          title="TOP" 
-          highlight="CATEGORIES" 
-          linkText="VIEW ALL CATEGORIES" 
-          linkTo="/categories" 
+        <SectionHeader
+          title="TOP"
+          highlight="CATEGORIES"
+          linkText="VIEW ALL CATEGORIES"
+          linkTo="/categories"
         />
-        
+
         {loading ? (
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-5">
             {[1, 2, 3, 4].map((n) => (
-              <div key={n} className="h-[180px] sm:h-[235px] bg-[#0a0a0a] border border-white/5 rounded-2xl animate-pulse" />
+              <div
+                key={n}
+                className="h-[180px] sm:h-[235px] bg-[#0a0a0a] border border-white/5 rounded-2xl animate-pulse"
+              />
             ))}
           </div>
         ) : (
@@ -160,7 +170,7 @@ const FeaturedCategories = () => {
             {/* ========================================================= */}
             {/* MOBILE VIEW: 2-Column Responsive Cards with Swipe Carousel */}
             {/* ========================================================= */}
-            <div 
+            <div
               className="block sm:hidden relative"
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
@@ -180,9 +190,20 @@ const FeaturedCategories = () => {
                       className="w-full flex-shrink-0 grid grid-cols-2 gap-3 items-start content-start"
                     >
                       {page.map((category, catIndex) => {
-                        const slug = category.slug || category.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-                        const catImage = category.image || category.image_url || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&h=600&fit=crop';
-                        const subtitle = category.short_description || category.shortDescription || category.description || 'Explore collection';
+                        const slug =
+                          category.slug ||
+                          category.name
+                            ?.toLowerCase()
+                            .replace(/[^a-z0-9]+/g, "-");
+                        const catImage =
+                          category.image ||
+                          category.image_url ||
+                          "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&h=600&fit=crop";
+                        const subtitle =
+                          category.short_description ||
+                          category.shortDescription ||
+                          category.description ||
+                          "Explore collection";
 
                         return (
                           <Link
@@ -191,18 +212,19 @@ const FeaturedCategories = () => {
                             className="group relative h-[180px] w-full rounded-2xl overflow-hidden bg-[#0a0a0a] border border-white/10 active:border-apex-red/60 active:scale-[0.98] transition-all duration-200 block shadow-lg"
                           >
                             {/* Full Card Background Image */}
-                            <img 
-                              src={catImage} 
-                              alt={category.name} 
+                            <img
+                              src={catImage}
+                              alt={category.name}
                               loading="lazy"
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90"
                               onError={(e) => {
-                                e.currentTarget.src = 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&h=600&fit=crop';
+                                e.currentTarget.src =
+                                  "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&h=600&fit=crop";
                               }}
                             />
 
                             {/* Bottom-to-Top Dark Gradient Overlay */}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/50 to-transparent pointer-events-none" />
+                            {/* <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/50 to-transparent pointer-events-none" /> */}
 
                             {/* Top Right Mini Red Arrow Indicator */}
                             <div className="absolute top-2.5 right-2.5 w-6 h-6 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/80 group-hover:text-apex-red group-hover:border-apex-red/50 transition-colors">
@@ -235,8 +257,8 @@ const FeaturedCategories = () => {
                       onClick={() => setCurrentMobilePage(i)}
                       className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
                         i === currentMobilePage
-                          ? 'w-5 bg-apex-red shadow-[0_0_8px_rgba(220,38,38,0.7)]'
-                          : 'w-1.5 bg-white/20 hover:bg-white/40'
+                          ? "w-5 bg-apex-red shadow-[0_0_8px_rgba(220,38,38,0.7)]"
+                          : "w-1.5 bg-white/20 hover:bg-white/40"
                       }`}
                       aria-label={`Go to category page ${i + 1}`}
                     />
@@ -252,7 +274,7 @@ const FeaturedCategories = () => {
               {/* Left Arrow */}
               {canScrollLeft && (
                 <button
-                  onClick={() => desktopScroll('left')}
+                  onClick={() => desktopScroll("left")}
                   className="flex absolute -left-3 lg:-left-5 top-1/2 -translate-y-1/2 z-20 w-11 h-11 items-center justify-center rounded-full bg-[#0a0a0a]/90 border border-white/15 text-white hover:bg-apex-red hover:border-apex-red transition-all duration-200 shadow-[0_4px_25px_rgba(0,0,0,0.8)] backdrop-blur-md cursor-pointer"
                   aria-label="Scroll categories left"
                 >
@@ -263,7 +285,7 @@ const FeaturedCategories = () => {
               {/* Right Arrow */}
               {canScrollRight && (
                 <button
-                  onClick={() => desktopScroll('right')}
+                  onClick={() => desktopScroll("right")}
                   className="flex absolute -right-3 lg:-right-5 top-1/2 -translate-y-1/2 z-20 w-11 h-11 items-center justify-center rounded-full bg-[#0a0a0a]/90 border border-white/15 text-white hover:bg-apex-red hover:border-apex-red transition-all duration-200 shadow-[0_4px_25px_rgba(0,0,0,0.8)] backdrop-blur-md cursor-pointer"
                   aria-label="Scroll categories right"
                 >
@@ -276,15 +298,24 @@ const FeaturedCategories = () => {
                 ref={desktopScrollRef}
                 className="flex gap-4 sm:gap-5 overflow-x-auto scroll-smooth snap-x snap-mandatory no-scrollbar py-2"
                 style={{
-                  WebkitOverflowScrolling: 'touch',
-                  scrollbarWidth: 'none',
-                  msOverflowStyle: 'none',
+                  WebkitOverflowScrolling: "touch",
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
                 }}
               >
                 {categoriesList.map((category, index) => {
-                  const slug = category.slug || category.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-                  const catImage = category.image || category.image_url || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&h=600&fit=crop';
-                  const subtitle = category.short_description || category.shortDescription || category.description || 'Explore collection';
+                  const slug =
+                    category.slug ||
+                    category.name?.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+                  const catImage =
+                    category.image ||
+                    category.image_url ||
+                    "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&h=600&fit=crop";
+                  const subtitle =
+                    category.short_description ||
+                    category.shortDescription ||
+                    category.description ||
+                    "Explore collection";
 
                   return (
                     <motion.div
@@ -300,18 +331,19 @@ const FeaturedCategories = () => {
                         className="group relative h-[230px] sm:h-[235px] md:h-[240px] w-full rounded-2xl overflow-hidden bg-[#0a0a0a] border border-white/10 hover:border-apex-red/60 hover:shadow-[0_0_30px_rgba(220,38,38,0.3)] hover:-translate-y-1 transition-all duration-300 block cursor-pointer"
                       >
                         {/* Background Category Image */}
-                        <img 
-                          src={catImage} 
-                          alt={category.name} 
+                        <img
+                          src={catImage}
+                          alt={category.name}
                           loading="lazy"
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100"
                           onError={(e) => {
-                            e.currentTarget.src = 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&h=600&fit=crop';
+                            e.currentTarget.src =
+                              "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&h=600&fit=crop";
                           }}
                         />
 
-                        {/* Bottom-to-Top Dark Gradient Overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-transparent pointer-events-none transition-opacity duration-300 group-hover:from-black/90" />
+                        {/* Bottom-to-Top Dark Gradient Overlay
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-transparent pointer-events-none transition-opacity duration-300 group-hover:from-black/90" /> */}
 
                         {/* Top-Right Floating Explore Badge */}
                         <div className="absolute top-3.5 right-3.5 w-7 h-7 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 group-hover:scale-105 group-hover:bg-apex-red group-hover:border-apex-red text-white transition-all duration-300 z-10 shadow-lg">

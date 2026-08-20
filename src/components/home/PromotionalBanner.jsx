@@ -1,8 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, ArrowRight, Sparkles, ExternalLink, Zap } from 'lucide-react';
-import { fetchBanners } from '../../services/api';
+import React, { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ArrowRight,
+  Sparkles,
+  ExternalLink,
+  Zap,
+} from "lucide-react";
+import { fetchBanners } from "../../services/api";
 
 export default function PromotionalBanner() {
   const [banners, setBanners] = useState([]);
@@ -21,7 +28,7 @@ export default function PromotionalBanner() {
         const data = await fetchBanners(true);
         setBanners(data || []);
       } catch (err) {
-        console.warn('Failed to load promotional banners:', err);
+        console.warn("Failed to load promotional banners:", err);
       } finally {
         setLoading(false);
       }
@@ -91,22 +98,22 @@ export default function PromotionalBanner() {
 
   const variants = {
     enter: (dir) => ({
-      x: dir > 0 ? '100%' : '-100%',
+      x: dir > 0 ? "100%" : "-100%",
       opacity: 0,
     }),
     center: {
       x: 0,
       opacity: 1,
       transition: {
-        x: { type: 'spring', stiffness: 300, damping: 30 },
+        x: { type: "spring", stiffness: 300, damping: 30 },
         opacity: { duration: 0.35 },
       },
     },
     exit: (dir) => ({
-      x: dir > 0 ? '-100%' : '100%',
+      x: dir > 0 ? "-100%" : "100%",
       opacity: 0,
       transition: {
-        x: { type: 'spring', stiffness: 300, damping: 30 },
+        x: { type: "spring", stiffness: 300, damping: 30 },
         opacity: { duration: 0.35 },
       },
     }),
@@ -144,13 +151,13 @@ export default function PromotionalBanner() {
                 <div className="absolute inset-0 w-full h-full">
                   <img
                     src={currentBanner.image_url}
-                    alt={currentBanner.title || 'Promotional Banner'}
+                    alt={currentBanner.title || "Promotional Banner"}
                     className="w-full h-full object-cover object-center opacity-60 group-hover:scale-105 transition-transform duration-700 ease-out"
                     loading="lazy"
                   />
                   {/* Subtle Dark Vignette Gradients */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-black/95 via-black/70 to-black/40 sm:to-transparent" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#080808] via-transparent to-black/40" />
+                  {/* <div className="absolute inset-0 bg-gradient-to-r from-black/95 via-black/70 to-black/40 sm:to-transparent" /> */}
+                  {/* <div className="absolute inset-0 bg-gradient-to-t from-[#080808] via-transparent to-black/40" /> */}
                 </div>
               )}
 
@@ -204,10 +211,12 @@ export default function PromotionalBanner() {
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.25 }}
                   >
-                    {currentBanner.button_url.startsWith('http') ? (
+                    {currentBanner.button_url.startsWith("http") ? (
                       <a
                         href={currentBanner.button_url}
-                        target={currentBanner.open_in_new_tab ? '_blank' : '_self'}
+                        target={
+                          currentBanner.open_in_new_tab ? "_blank" : "_self"
+                        }
                         rel="noopener noreferrer"
                         className="btn-primary inline-flex items-center justify-center gap-2 px-5 sm:px-7 py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-bold uppercase tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:shadow-[0_0_30px_rgba(220,38,38,0.7)] transition-all cursor-pointer w-fit"
                       >
@@ -259,8 +268,8 @@ export default function PromotionalBanner() {
                   onClick={() => handleDotClick(idx)}
                   className={`h-2 rounded-full transition-all duration-300 cursor-pointer ${
                     idx === currentIndex
-                      ? 'w-6 sm:w-8 bg-apex-red shadow-[0_0_8px_rgba(220,38,38,0.8)]'
-                      : 'w-2 bg-white/30 hover:bg-white/60'
+                      ? "w-6 sm:w-8 bg-apex-red shadow-[0_0_8px_rgba(220,38,38,0.8)]"
+                      : "w-2 bg-white/30 hover:bg-white/60"
                   }`}
                   aria-label={`Go to slide ${idx + 1}`}
                 />
