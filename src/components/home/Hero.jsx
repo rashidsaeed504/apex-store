@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
@@ -13,7 +19,12 @@ import {
   Flame,
 } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
-import { fetchHeroSlides, invalidateBannersCache, INITIAL_SEED_HERO_SLIDES, INITIAL_SEED_HERO_BANNERS } from "../../services/api";
+import {
+  fetchHeroSlides,
+  invalidateBannersCache,
+  INITIAL_SEED_HERO_SLIDES,
+  INITIAL_SEED_HERO_BANNERS,
+} from "../../services/api";
 import heroProductImg from "../../assets/download.png";
 
 const AUTOPLAY_INTERVAL = 3000; // 3 seconds per slide
@@ -83,7 +94,8 @@ export default function Hero() {
         }
       } catch (err) {
         console.warn("Failed to load hero slides:", err);
-        if (isMounted) setSlides(INITIAL_SEED_HERO_SLIDES || INITIAL_SEED_HERO_BANNERS);
+        if (isMounted)
+          setSlides(INITIAL_SEED_HERO_SLIDES || INITIAL_SEED_HERO_BANNERS);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -109,12 +121,18 @@ export default function Hero() {
           .on(
             "postgres_changes",
             { event: "*", schema: "public", table: "banners" },
-            () => { invalidateBannersCache(); loadSlides(); }
+            () => {
+              invalidateBannersCache();
+              loadSlides();
+            },
           )
           .on(
             "postgres_changes",
             { event: "*", schema: "public", table: "hero_slides" },
-            () => { invalidateBannersCache(); loadSlides(); }
+            () => {
+              invalidateBannersCache();
+              loadSlides();
+            },
           )
           .subscribe();
       } catch (e) {
@@ -235,7 +253,11 @@ export default function Hero() {
       if (Array.isArray(slide?.features)) {
         features = slide.features;
       } else if (typeof slide?.features === "string") {
-        try { features = JSON.parse(slide.features || "[]"); } catch { features = []; }
+        try {
+          features = JSON.parse(slide.features || "[]");
+        } catch {
+          features = [];
+        }
       }
       return { ...slide, _parsedFeatures: features };
     });
@@ -243,7 +265,7 @@ export default function Hero() {
 
   return (
     <section
-      className="hero-section group/hero relative flex items-center bg-[#050505] overflow-hidden pt-24 sm:pt-28 md:pt-32 pb-8 sm:pb-12 md:pb-16 select-none min-h-[auto] sm:min-h-[85vh] lg:min-h-[92vh]"
+      className="hero-section group/hero relative flex items-center bg-[#050505] overflow-hidden  pt-24 sm:pt-28 md:pt-32 pb-8 sm:pb-12 md:pb-16 select-none min-h-[auto] sm:min-h-[85vh] lg:min-h-[92vh]"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onTouchStart={handleTouchStart}
@@ -257,7 +279,7 @@ export default function Hero() {
       <div className="absolute top-1/4 left-10 w-72 h-72 bg-apex-red/10 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-10 right-10 w-96 h-96 bg-apex-red/15 blur-[150px] rounded-full pointer-events-none" />
 
-      <div className="container max-w-7xl mx-auto px-4 sm:px-6 md:px-8 relative z-10 w-full">
+      <div className="container max-w-7xl mx-auto px-4 mt-12 sm:px-6 md:px-8 relative z-10 w-full">
         {loading ? (
           <div className="w-full h-[450px] bg-[#0a0a0a] border border-white/5 rounded-3xl animate-pulse flex items-center justify-center">
             <div className="w-12 h-12 rounded-full border-2 border-apex-red border-t-transparent animate-spin" />
@@ -274,13 +296,22 @@ export default function Hero() {
                 let animationClass = "";
                 if (isAnimating) {
                   if (isCurrent) {
-                    animationClass = direction === 1 ? "hero-slide-in-right" : "hero-slide-in-left";
+                    animationClass =
+                      direction === 1
+                        ? "hero-slide-in-right"
+                        : "hero-slide-in-left";
                   } else if (isPrev) {
-                    animationClass = direction === 1 ? "hero-slide-out-left" : "hero-slide-out-right";
+                    animationClass =
+                      direction === 1
+                        ? "hero-slide-out-left"
+                        : "hero-slide-out-right";
                   }
                 }
 
-                const slideImage = slide?.desktop_image_url || slide?.image_url || heroProductImg;
+                const slideImage =
+                  slide?.desktop_image_url ||
+                  slide?.image_url ||
+                  heroProductImg;
                 const featuresList = slide._parsedFeatures;
 
                 return (
@@ -288,7 +319,9 @@ export default function Hero() {
                     key={slide?.id || index}
                     className={`absolute inset-0 w-full flex items-start lg:items-center ${animationClass}`}
                     style={{
-                      transform: isAnimating ? undefined : "translate3d(0, 0, 0)",
+                      transform: isAnimating
+                        ? undefined
+                        : "translate3d(0, 0, 0)",
                       zIndex: isCurrent ? 10 : 5,
                     }}
                     aria-hidden={!isCurrent}

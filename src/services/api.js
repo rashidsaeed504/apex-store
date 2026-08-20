@@ -127,19 +127,23 @@ const safeSupabaseMutation = async (table, operation, payload, eqField, eqValue)
     
     if (!error) return data;
 
-    // Handle PGRST204 missing column in schema cache gracefully
-    if (error.code === 'PGRST204' && error.message?.includes('Could not find the')) {
-      const match = error.message.match(/Could not find the '([^']+)' column/);
-      if (match && match[1] && currentPayload[match[1]] !== undefined) {
-        console.warn(`[Supabase Schema Fallback] Removing missing column '${match[1]}' from '${table}' payload and retrying...`);
-        delete currentPayload[match[1]];
+    // Handle PGRST204 / 42703 missing column in schema gracefully
+    if (
+      (error.code === 'PGRST204' || error.code === '42703') ||
+      (error.message && (error.message.includes('column') || error.message.includes('Could not find the')))
+    ) {
+      const match = error.message.match(/column ["]?([^"'\s]+)["]? of relation|Could not find the '([^']+)' column/i);
+      const colName = match ? (match[1] || match[2]) : null;
+      if (colName && currentPayload[colName] !== undefined) {
+        console.warn(`[Supabase Schema Fallback] Removing missing column '${colName}' from '${table}' payload and retrying...`);
+        delete currentPayload[colName];
         continue;
       }
     }
 
     // Handle PGRST205 missing table in schema cache gracefully
     if (error.code === 'PGRST205') {
-      console.warn(`[Supabase Table Fallback] Table '${table}' not found in Supabase schema. Falling back to local resilient store.`);
+      console.warn(`[Supabase Table Fallback] Table '${table}' not found in Supabase schema. Falling back to resilient cloud/local store.`);
       throw new Error(`Table '${table}' not found in Supabase schema`);
     }
 
@@ -1361,7 +1365,7 @@ export async function fetchMyOrders() {
         const { data, error } = await supabase
           .from('orders')
           .select('*')
-          .or(`customer_id.eq.${userId},user_id.eq.${userId}`)
+          .eq('customer_id', userId)
           .order('created_at', { ascending: false });
         if (!error && Array.isArray(data)) {
           supabaseResults = data;
@@ -1785,7 +1789,7 @@ export async function checkReviewEligibility({ productId, productName, productSl
         const { data, error } = await supabase
           .from('orders')
           .select('*')
-          .or(`customer_id.eq.${userId},user_id.eq.${userId}`);
+          .eq('customer_id', userId);
         if (!error && Array.isArray(data)) {
           customerOrders = data;
         }
@@ -1976,11 +1980,7 @@ export async function fetchEligibleUnreviewedItems(user) {
 
     const unreviewed = [];
     for (const order of delivered) {
-      const items = Array.isArray(order.items)
-        ? order.items
-        : typeof order.items === 'string'
-        ? JSON.parse(order.items)
-        : [];
+      const items = safeParseItems(order.items);
       for (const item of items) {
         const pid = Number(item.id || item.product_id);
         if (pid && !reviewedProductIds.has(pid) && !unreviewed.some((u) => u.productId === pid)) {
@@ -3385,7 +3385,7 @@ export async function fetchCustomerReturns() {
 
       let query = supabase.from('returns').select('*').order('created_at', { ascending: false });
       if (userId) {
-        query = query.or(`user_id.eq.${userId},customer_id.eq.${userId}`);
+        query = query.eq('customer_id', userId);
       } else if (userEmail) {
         query = query.ilike('customer_email', userEmail);
       }
