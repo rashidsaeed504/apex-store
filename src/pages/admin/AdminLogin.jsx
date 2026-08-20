@@ -4,25 +4,29 @@ import { motion } from 'framer-motion';
 import { ShieldCheck, Mail, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 import logo from '../../assets/logo.png';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { checkIsAdmin } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('Apexstore15024M');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
   const { success, error: toastError } = useToast();
 
-  // Redirect if already logged in with a valid Supabase session
+  // Redirect if already logged in with a verified administrator session
   useEffect(() => {
     async function checkExistingSession() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          const from = location.state?.from?.pathname || '/admin';
-          navigate(from, { replace: true });
+        if (session?.user) {
+          const adminCheck = await checkIsAdmin(session.user.id, session.user.email);
+          if (adminCheck.isAdmin) {
+            const from = location.state?.from?.pathname || '/admin';
+            navigate(from, { replace: true });
+          }
         }
       } catch (err) {
         console.warn('Session check error:', err);
@@ -46,17 +50,26 @@ export default function AdminLogin() {
 
     try {
       if (!isSupabaseConfigured) {
-        throw new Error('Supabase client is not configured. Please check environment configuration.');
+        // Mock fallback verification
+        const adminCheck = await checkIsAdmin(null, cleanEmail);
+        if (!adminCheck.isAdmin) {
+          setErrorMessage('You are not authorized to access the admin portal.');
+          toastError('You are not authorized to access the admin portal.');
+          setLoading(false);
+          return;
+        }
+        success(`Welcome back, ${cleanEmail}!`);
+        navigate('/admin', { replace: true });
+        return;
       }
 
-      // Authenticate directly against Supabase Auth server
+      // 1. Authenticate directly against Supabase Auth server
       const { data, error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password: password,
       });
 
       if (error) {
-        // Specific user-friendly error messages
         const msg = error.message.includes('Invalid login credentials')
           ? 'Invalid email or password. Please verify your credentials.'
           : error.message || 'Authentication failed. Please try again.';
@@ -67,14 +80,29 @@ export default function AdminLogin() {
         return;
       }
 
-      if (data?.session && data?.user) {
-        success(`Welcome back, ${data.user.email}!`);
-        const from = location.state?.from?.pathname || '/admin';
-        navigate(from, { replace: true });
-      } else {
+      if (!data?.session || !data?.user) {
         setErrorMessage('Authentication failed: No active session created.');
         toastError('Authentication failed: No active session created.');
+        setLoading(false);
+        return;
       }
+
+      // 2. Strict Admin Authorization Check against database allowlist
+      const adminCheck = await checkIsAdmin(data.user.id, data.user.email);
+
+      if (!adminCheck.isAdmin) {
+        // Immediate sign out if authenticated user is not an administrator
+        await supabase.auth.signOut();
+        setErrorMessage('You are not authorized to access the admin portal.');
+        toastError('You are not authorized to access the admin portal.');
+        setLoading(false);
+        return;
+      }
+
+      // 3. Authorized Admin Success
+      success(`Welcome back, ${data.user.email}!`);
+      const from = location.state?.from?.pathname || '/admin';
+      navigate(from, { replace: true });
     } catch (err) {
       const msg = err.message || 'An unexpected error occurred during login.';
       setErrorMessage(msg);

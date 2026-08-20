@@ -9,6 +9,7 @@ import { useToast } from "../../context/ToastContext";
 import Logo from "../ui/Logo";
 import MobileMenu from "./MobileMenu";
 import { fetchActiveCategoriesAndSubcategories } from "../../services/api.js";
+import { gsap, useGSAP, isReducedMotion } from "../../lib/motion";
 
 export default function Navbar({ openCart }) {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -17,6 +18,7 @@ export default function Navbar({ openCart }) {
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
   const [categoriesList, setCategoriesList] = useState([]);
   const accountRef = useRef(null);
+  const headerRef = useRef(null);
 
   const { cartCount } = useCart();
   const { wishlistCount } = useWishlist();
@@ -25,6 +27,20 @@ export default function Navbar({ openCart }) {
   const { success } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Subtle GSAP Page Load Stagger for Navbar Elements
+  useGSAP(
+    () => {
+      if (isReducedMotion() || !headerRef.current) return;
+
+      gsap.fromTo(
+        '.nav-stagger-item',
+        { opacity: 0, y: -10 },
+        { opacity: 1, y: 0, duration: 0.5, stagger: 0.04, ease: 'power2.out', delay: 0.1 }
+      );
+    },
+    { scope: headerRef }
+  );
 
   useEffect(() => {
     const handleScroll = () => {
@@ -86,16 +102,17 @@ export default function Navbar({ openCart }) {
   return (
     <>
       <header
+        ref={headerRef}
         className={`fixed top-0 w-full z-40 transition-all duration-300 ${
           isScrolled
-            ? "bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 py-3.5"
+            ? "bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 py-3.5 shadow-[0_10px_30px_rgba(0,0,0,0.8)]"
             : "bg-transparent py-5"
         }`}
       >
         <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             {/* Left: Mobile Hamburger & Brand Logo */}
-            <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+            <div className="nav-stagger-item flex items-center gap-3 sm:gap-4 shrink-0">
               <button
                 onClick={() => setIsMobileMenuOpen(true)}
                 className="md:hidden text-gray-300 hover:text-white p-1 focus:outline-none"
@@ -112,7 +129,7 @@ export default function Navbar({ openCart }) {
               {navLinks.map((link) => (
                 <div
                   key={link.name}
-                  className="relative group"
+                  className="nav-stagger-item relative group"
                   onMouseEnter={() =>
                     link.hasDropdown && setIsCategoryDropdownOpen(true)
                   }
@@ -189,7 +206,7 @@ export default function Navbar({ openCart }) {
               {/* Search */}
               <button
                 onClick={openSearch}
-                className="p-2 text-gray-300 hover:text-white transition-colors focus:outline-none cursor-pointer"
+                className="nav-stagger-item p-2 text-gray-300 hover:text-white transition-colors focus:outline-none cursor-pointer"
                 aria-label="Search products"
               >
                 <Search className="w-5 h-5" />
@@ -198,7 +215,7 @@ export default function Navbar({ openCart }) {
               {/* Wishlist */}
               <Link
                 to="/wishlist"
-                className="p-2 text-gray-300 hover:text-white transition-colors relative"
+                className="nav-stagger-item p-2 text-gray-300 hover:text-white transition-colors relative"
                 aria-label="Wishlist"
               >
                 <Heart className="w-5 h-5" />
@@ -210,7 +227,7 @@ export default function Navbar({ openCart }) {
               </Link>
 
               {/* Customer Account Dropdown */}
-              <div className="relative" ref={accountRef}>
+              <div className="nav-stagger-item relative" ref={accountRef}>
                 <button
                   onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
                   className="p-1.5 text-gray-300 hover:text-white transition-colors flex items-center gap-1.5 cursor-pointer"
@@ -249,7 +266,7 @@ export default function Navbar({ openCart }) {
                               Member
                             </span>
                           </div>
-                          <p className="text-[11px] text-gray-400 truncate mt-0.5 font-mono">
+                          <p className="text-xs text-gray-400 truncate mt-0.5">
                             {user.email}
                           </p>
                         </div>
@@ -260,43 +277,39 @@ export default function Navbar({ openCart }) {
                           className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
                         >
                           <LayoutDashboard className="w-4 h-4 text-apex-red" />
-                          Dashboard
+                          Account Dashboard
                         </Link>
-
                         <Link
                           to="/account/orders"
                           onClick={() => setIsAccountDropdownOpen(false)}
                           className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
                         >
-                          <Package className="w-4 h-4 text-gray-400" />
+                          <Package className="w-4 h-4 text-apex-red" />
                           My Orders
                         </Link>
-
+                        <Link
+                          to="/account/returns"
+                          onClick={() => setIsAccountDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
+                        >
+                          <ShieldCheck className="w-4 h-4 text-apex-red" />
+                          Returns & Refunds
+                        </Link>
                         <Link
                           to="/account/addresses"
                           onClick={() => setIsAccountDropdownOpen(false)}
                           className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
                         >
-                          <MapPin className="w-4 h-4 text-gray-400" />
+                          <MapPin className="w-4 h-4 text-apex-red" />
                           Saved Addresses
                         </Link>
-
                         <Link
                           to="/account/reviews"
                           onClick={() => setIsAccountDropdownOpen(false)}
                           className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
                         >
-                          <Star className="w-4 h-4 text-amber-400" />
+                          <Star className="w-4 h-4 text-apex-red" />
                           My Reviews
-                        </Link>
-
-                        <Link
-                          to="/account/profile"
-                          onClick={() => setIsAccountDropdownOpen(false)}
-                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
-                        >
-                          <User className="w-4 h-4 text-gray-400" />
-                          Profile Settings
                         </Link>
 
                         <div className="pt-1 border-t border-white/10">
@@ -338,12 +351,14 @@ export default function Navbar({ openCart }) {
               {/* Cart */}
               <button
                 onClick={openCart}
-                className="relative p-1.5 text-gray-300 hover:text-white transition-colors"
+                className="nav-stagger-item relative p-1.5 text-gray-300 hover:text-white transition-colors"
                 aria-label="Shopping Cart"
               >
-                <ShoppingBag className="w-5 h-5 sm:w-6 sm:h-6" />
+                <span data-cart-icon className="inline-flex">
+                  <ShoppingBag className="w-5 h-5 sm:w-6 sm:h-6" />
+                </span>
                 {cartCount > 0 && (
-                  <span className="absolute top-0 right-0 bg-apex-red text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-black shadow-[0_0_8px_rgba(220,38,38,0.8)]">
+                  <span data-cart-badge className="absolute top-0 right-0 bg-apex-red text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-black shadow-[0_0_8px_rgba(220,38,38,0.8)]">
                     {cartCount}
                   </span>
                 )}

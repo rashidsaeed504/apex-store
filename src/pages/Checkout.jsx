@@ -213,40 +213,38 @@ export default function Checkout() {
   }
 
   // =========================================================
-  // 2. AUTHENTICATION GATE (Unauthenticated Customer)
+  // 2. Unauthenticated Checkout: Require Auth Gateway
   // =========================================================
-  if (!user) {
+  if (!user && !authLoading) {
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="min-h-[75vh] flex items-center justify-center p-4 max-w-xl mx-auto py-16 mt-20 sm:mt-24"
-      >
-        <div className="w-full bg-[#0a0a0a] border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl text-center space-y-6">
-          {/* Lock / Shield Icon */}
-          <div className="w-16 h-16 rounded-2xl bg-apex-red/10 border border-apex-red/30 text-apex-red flex items-center justify-center mx-auto shadow-[0_0_25px_rgba(220,38,38,0.25)]">
-            <ShieldCheck size={32} />
+      <div className="min-h-[80vh] flex flex-col items-center justify-center p-4 py-16 mt-24 max-w-lg mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full bg-[#0a0a0a] border border-white/10 rounded-3xl p-6 sm:p-8 text-center space-y-6 shadow-2xl"
+        >
+          {/* Header Icon */}
+          <div className="w-16 h-16 bg-apex-red/10 border border-apex-red/20 text-apex-red rounded-2xl flex items-center justify-center mx-auto shadow-[0_0_25px_rgba(220,38,38,0.2)]">
+            <Lock size={32} />
           </div>
 
           <div>
-            <span className="text-[10px] sm:text-xs font-mono font-bold text-apex-red uppercase tracking-widest bg-apex-red/10 px-3 py-1 rounded-full border border-apex-red/20">
-              CHECKOUT VERIFICATION
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mt-3">
-              SIGN IN TO CONTINUE
-            </h1>
-            <p className="text-xs sm:text-sm text-gray-400 mt-2 max-w-md mx-auto leading-relaxed">
-              Please sign in to your APEX STORE account before placing your order. Your cart ({cartItems.length} {cartItems.length === 1 ? 'item' : 'items'}) is saved and ready.
+            <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-white">
+              Account <span className="text-apex-red">Required</span>
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-400 mt-1.5 leading-relaxed">
+              Please sign in or create an APEX account to complete your checkout. Your order and live delivery tracking will be connected to your account.
             </p>
           </div>
 
-          {/* Cart Snapshot Mini Preview */}
-          <div className="bg-[#121212] border border-white/5 rounded-2xl p-4 text-left flex items-center justify-between">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-11 h-11 rounded-xl bg-[#1c1c1c] border border-white/10 flex items-center justify-center shrink-0 text-gray-400">
-                <Package className="w-5 h-5" />
+          {/* Cart Quick Summary */}
+          <div className="p-3.5 bg-[#121212] border border-white/5 rounded-2xl flex items-center justify-between text-left">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-apex-red">
+                <ShoppingBag size={20} />
               </div>
-              <div className="truncate">
+              <div>
                 <p className="text-xs font-bold text-white uppercase tracking-wider">Cart Total</p>
                 <p className="text-[11px] text-gray-400">{cartItems.length} {cartItems.length === 1 ? 'product' : 'products'} in cart</p>
               </div>
@@ -259,7 +257,10 @@ export default function Checkout() {
           {/* Action Buttons */}
           <div className="space-y-3 pt-2">
             {/* 1. Continue with Google */}
-            <button
+            <motion.button
+              whileHover={{ scale: 1.02, y: -1 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
               onClick={handleGoogleSignIn}
               disabled={googleLoading}
               className="w-full flex items-center justify-center py-3.5 px-4 bg-white text-gray-900 hover:bg-gray-100 font-bold text-xs sm:text-sm uppercase tracking-wider rounded-xl transition-all shadow-md cursor-pointer disabled:opacity-50"
@@ -270,10 +271,13 @@ export default function Checkout() {
                 <GoogleIcon />
               )}
               <span>Continue with Google</span>
-            </button>
+            </motion.button>
 
             {/* 2. Login with Existing Account */}
-            <button
+            <motion.button
+              whileHover={{ scale: 1.04, y: -2 }}
+              whileTap={{ scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
               onClick={() => {
                 try {
                   sessionStorage.setItem('apex_auth_redirect', '/checkout');
@@ -284,10 +288,13 @@ export default function Checkout() {
             >
               <UserCheck size={16} />
               <span>Login to Existing Account</span>
-            </button>
+            </motion.button>
 
             {/* 3. Create Account */}
-            <button
+            <motion.button
+              whileHover={{ scale: 1.04, y: -2 }}
+              whileTap={{ scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
               onClick={() => {
                 try {
                   sessionStorage.setItem('apex_auth_redirect', '/checkout');
@@ -297,7 +304,7 @@ export default function Checkout() {
               className="w-full flex items-center justify-center gap-2 py-3 text-xs sm:text-sm font-bold uppercase tracking-wider text-gray-300 hover:text-white bg-[#161616] hover:bg-[#202020] border border-white/10 rounded-xl transition-all cursor-pointer"
             >
               <span>Create New Account</span>
-            </button>
+            </motion.button>
           </div>
 
           {/* Return link */}
@@ -306,8 +313,8 @@ export default function Checkout() {
               <ArrowLeft size={13} /> Back to Shopping Cart
             </Link>
           </div>
-        </div>
-      </motion.div>
+        </motion.div>
+      </div>
     );
   }
 
@@ -317,105 +324,114 @@ export default function Checkout() {
   if (isPlaced) {
     const orderItems = placedOrder?.items || [];
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="min-h-[75vh] flex flex-col items-center justify-center p-4 text-center max-w-2xl mx-auto py-16 mt-24 sm:mt-24"
-      >
-        <div className="w-20 h-20 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(34,197,94,0.3)]">
-          <CheckCircle size={44} />
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-black text-white uppercase tracking-tight mb-2">
-          Order Placed Successfully!
-        </h1>
-        <p className="text-gray-400 mb-8 text-sm max-w-md">
-          Thank you for choosing APEX. Your order has been placed and is now being prepared for shipping.
-        </p>
-
-        {/* Itemized Order Confirmation Card */}
-        <div className="w-full bg-[#0c0c0c] border border-white/10 rounded-3xl p-6 sm:p-8 mb-8 text-left space-y-4 shadow-2xl">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-white/10 gap-2">
-            <div>
-              <span className="text-[11px] uppercase text-gray-500 font-bold block">Order Reference</span>
-              <span className="font-mono text-lg sm:text-xl font-black text-white">
-                #{placedOrder?.order_number || "APEX-8922"}
-              </span>
-            </div>
-            <div className="sm:text-right">
-              <span className="text-[11px] uppercase text-gray-500 font-bold block">Status</span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                Order Placed (Pending)
-              </span>
-            </div>
+      <div className="min-h-[75vh] flex flex-col items-center justify-center p-4 text-center max-w-2xl mx-auto py-16 mt-24 sm:mt-24">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 16 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full flex flex-col items-center"
+        >
+          <div className="w-20 h-20 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(34,197,94,0.3)]">
+            <CheckCircle size={44} />
           </div>
+          <h1 className="text-3xl sm:text-4xl font-black text-white uppercase tracking-tight mb-2">
+            Order Placed Successfully!
+          </h1>
+          <p className="text-gray-400 mb-8 text-sm max-w-md">
+            Thank you for choosing APEX. Your order has been placed and is now being prepared for shipping.
+          </p>
 
-          {/* Purchased Items */}
-          {orderItems.length > 0 && (
-            <div className="py-2 border-b border-white/5 space-y-2">
-              <span className="text-[11px] uppercase text-gray-500 font-bold block">Purchased Items</span>
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {orderItems.map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center text-xs text-gray-300">
-                    <span className="truncate pr-2 font-medium">{item.name} × {item.quantity}</span>
-                    <span className="font-mono font-bold text-white shrink-0">{formatPrice(item.price * item.quantity)}</span>
-                  </div>
-                ))}
+          {/* Itemized Order Confirmation Card */}
+          <div className="w-full bg-[#0c0c0c] border border-white/10 rounded-3xl p-6 sm:p-8 mb-8 text-left space-y-4 shadow-2xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-white/10 gap-2">
+              <div>
+                <span className="text-[11px] uppercase text-gray-500 font-bold block">Order Reference</span>
+                <span className="font-mono text-lg sm:text-xl font-black text-white">
+                  #{placedOrder?.order_number || "APEX-8922"}
+                </span>
+              </div>
+              <div className="sm:text-right">
+                <span className="text-[11px] uppercase text-gray-500 font-bold block">Status</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  Order Placed (Pending)
+                </span>
               </div>
             </div>
-          )}
 
-          {/* Delivery & Payment Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2 text-xs text-gray-300">
-            <div>
-              <span className="text-[11px] uppercase text-gray-500 font-bold block mb-1">Customer & Delivery</span>
-              <p className="font-semibold text-white">{formData.fullName}</p>
-              <p className="text-gray-400">{formData.phone}</p>
-              <p className="text-gray-400 truncate">{formData.address}, {formData.city}</p>
+            {/* Purchased Items */}
+            {orderItems.length > 0 && (
+              <div className="py-2 border-b border-white/5 space-y-2">
+                <span className="text-[11px] uppercase text-gray-500 font-bold block">Purchased Items</span>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {orderItems.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-xs text-gray-300">
+                      <span className="truncate pr-2 font-medium">{item.name} × {item.quantity}</span>
+                      <span className="font-mono font-bold text-white shrink-0">{formatPrice(item.price * item.quantity)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Delivery & Payment Details */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2 text-xs text-gray-300">
+              <div>
+                <span className="text-[11px] uppercase text-gray-500 font-bold block mb-1">Customer & Delivery</span>
+                <p className="font-semibold text-white">{formData.fullName}</p>
+                <p className="text-gray-400">{formData.phone}</p>
+                <p className="text-gray-400 truncate">{formData.address}, {formData.city}</p>
+              </div>
+              <div>
+                <span className="text-[11px] uppercase text-gray-500 font-bold block mb-1">Payment Method</span>
+                <p className="font-semibold text-white uppercase">Cash on Delivery (COD)</p>
+                <p className="text-gray-400">Pay upon courier inspection & receipt</p>
+              </div>
             </div>
-            <div>
-              <span className="text-[11px] uppercase text-gray-500 font-bold block mb-1">Payment Method</span>
-              <p className="font-semibold text-white uppercase">Cash on Delivery (COD)</p>
-              <p className="text-gray-400">Pay upon courier inspection & receipt</p>
+
+            {/* Total */}
+            <div className="flex justify-between items-center pt-4 border-t border-white/10">
+              <span className="text-sm font-bold text-white">Total Amount:</span>
+              <span className="text-xl sm:text-2xl font-black text-apex-red font-mono">
+                {formatPrice(placedOrder?.total || total)}
+              </span>
             </div>
           </div>
 
-          {/* Total */}
-          <div className="flex justify-between items-center pt-4 border-t border-white/10">
-            <span className="text-sm font-bold text-white">Total Amount:</span>
-            <span className="text-xl sm:text-2xl font-black text-apex-red font-mono">
-              {formatPrice(placedOrder?.total || total)}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-center gap-3 w-full">
-          <Button
-            onClick={() => navigate("/orders")}
-            variant="primary"
-            className="px-6 py-3 text-xs uppercase font-bold tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.4)]"
-          >
-            TRACK THIS ORDER
-          </Button>
-
-          {user && (
-            <Button
-              onClick={() => navigate("/account/orders")}
-              variant="outline"
-              className="px-6 py-3 text-xs uppercase font-bold tracking-wider border-apex-red/40 text-apex-red hover:bg-apex-red hover:text-white"
+          <div className="flex flex-wrap items-center justify-center gap-3 w-full">
+            <motion.button
+              whileHover={{ scale: 1.04, y: -2 }}
+              whileTap={{ scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
+              onClick={() => navigate("/orders")}
+              className="btn-primary px-6 py-3 text-xs uppercase font-bold tracking-wider rounded-xl shadow-[0_0_20px_rgba(220,38,38,0.4)] cursor-pointer"
             >
-              VIEW IN MY ORDERS
-            </Button>
-          )}
+              TRACK THIS ORDER
+            </motion.button>
 
-          <Button
-            onClick={() => navigate("/shop")}
-            variant="outline"
-            className="px-6 py-3 text-xs uppercase font-bold tracking-wider border-white/10 text-gray-300 hover:text-white"
-          >
-            CONTINUE SHOPPING
-          </Button>
-        </div>
-      </motion.div>
+            {user && (
+              <motion.button
+                whileHover={{ scale: 1.04, y: -2 }}
+                whileTap={{ scale: 0.96 }}
+                transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                onClick={() => navigate("/account/orders")}
+                className="px-6 py-3 text-xs uppercase font-bold tracking-wider rounded-xl border border-apex-red/40 text-apex-red hover:bg-apex-red hover:text-white transition-all cursor-pointer"
+              >
+                VIEW IN MY ORDERS
+              </motion.button>
+            )}
+
+            <motion.button
+              whileHover={{ scale: 1.04, y: -2 }}
+              whileTap={{ scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
+              onClick={() => navigate("/shop")}
+              className="px-6 py-3 text-xs uppercase font-bold tracking-wider rounded-xl border border-white/10 text-gray-300 hover:text-white transition-all cursor-pointer"
+            >
+              CONTINUE SHOPPING
+            </motion.button>
+          </div>
+        </motion.div>
+      </div>
     );
   }
 
@@ -426,13 +442,13 @@ export default function Checkout() {
     "w-full bg-[#111] border border-white/10 rounded-xl px-4 py-2.5 sm:py-3 text-sm text-white placeholder-gray-500 focus:border-apex-red transition-colors outline-none";
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="min-h-screen bg-[#050505] text-white py-10 sm:py-16 md:py-20 px-4 md:px-8 max-w-7xl mx-auto mt-16"
-    >
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+    <div className="min-h-screen bg-[#050505] text-white py-10 sm:py-16 md:py-20 px-4 md:px-8 max-w-7xl mx-auto mt-16">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8"
+      >
         <div>
           <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
             Secure <span className="text-apex-red">Checkout</span>
@@ -445,11 +461,17 @@ export default function Checkout() {
         <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-1.5 rounded-full text-xs text-emerald-400 font-bold">
           <UserCheck size={14} /> Signed in as {user.email}
         </div>
-      </div>
+      </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
         {/* Left: Form */}
-        <div className="lg:col-span-7">
+        <motion.div 
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="lg:col-span-7"
+        >
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Saved Addresses Picker for Logged In Customer */}
             {addresses.length > 0 && (
@@ -465,8 +487,11 @@ export default function Checkout() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {addresses.map((addr) => (
-                    <div
+                    <motion.div
                       key={addr.id}
+                      whileHover={{ scale: 1.02, y: -1 }}
+                      whileTap={{ scale: 0.98 }}
+                      transition={{ type: "spring", stiffness: 400, damping: 17 }}
                       onClick={() => handleSelectSavedAddress(addr)}
                       className={`p-3.5 rounded-xl border text-xs cursor-pointer transition-all ${
                         selectedAddressId === addr.id
@@ -484,7 +509,7 @@ export default function Checkout() {
                       </div>
                       <p className="text-gray-400 truncate">{addr.address}</p>
                       <p className="text-gray-500">{addr.city}, {addr.phone}</p>
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               </div>
@@ -645,11 +670,13 @@ export default function Checkout() {
             </div>
 
             {/* Submit Button */}
-            <Button
+            <motion.button
               type="submit"
-              variant="primary"
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
               disabled={submitting}
-              className="w-full flex items-center justify-center gap-2 py-3.5 sm:py-4 text-xs sm:text-sm font-bold uppercase tracking-wider rounded-xl shadow-[0_0_25px_rgba(220,38,38,0.4)] cursor-pointer disabled:opacity-50"
+              className="btn-primary w-full flex items-center justify-center gap-2 py-3.5 sm:py-4 text-xs sm:text-sm font-bold uppercase tracking-wider rounded-xl shadow-[0_0_25px_rgba(220,38,38,0.4)] cursor-pointer disabled:opacity-50"
             >
               {submitting ? (
                 <>
@@ -662,13 +689,19 @@ export default function Checkout() {
                   <span>Place Order • {formatPrice(total)}</span>
                 </>
               )}
-            </Button>
+            </motion.button>
           </form>
-        </div>
+        </motion.div>
 
         {/* Right: Order Summary */}
-        <div className="lg:col-span-5">
-          <div className="bg-[#0a0a0a] rounded-2xl border border-white/10 p-4 sm:p-6 sticky top-24 space-y-6">
+        <motion.div 
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.55, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+          className="lg:col-span-5"
+        >
+          <div className="bg-[#0a0a0a] rounded-2xl border border-white/10 p-4 sm:p-6 sticky top-24 space-y-6 shadow-xl">
             <h2 className="text-base sm:text-lg font-bold uppercase tracking-wider text-white border-b border-white/10 pb-3 flex items-center justify-between">
               <span>Order Summary</span>
               <span className="text-xs text-gray-400 font-normal">
@@ -727,8 +760,8 @@ export default function Checkout() {
               </Link>
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
-    </motion.div>
+    </div>
   );
 }

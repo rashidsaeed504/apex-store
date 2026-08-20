@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
@@ -7,13 +6,14 @@ import {
   ShieldCheck,
   Zap,
   Clock,
-  CheckCircle2,
 } from "lucide-react";
 import { fetchActiveSpecialOffer } from "../../services/api";
 import { formatPrice, slugify } from "../../utils/helpers";
 import Rating from "../ui/Rating";
-
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { gsap, useGSAP, isReducedMotion } from "../../lib/motion";
+import MagneticButton from "../../lib/motion/components/MagneticButton";
+import TechBackground from "../../lib/motion/components/TechBackground";
 
 function CountdownTimer({ endTime }) {
   const [timeLeft, setTimeLeft] = useState(null);
@@ -76,6 +76,7 @@ function CountdownTimer({ endTime }) {
 export default function SpecialOfferSection() {
   const [offer, setOffer] = useState(null);
   const [loading, setLoading] = useState(true);
+  const sectionRef = useRef(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -105,16 +106,11 @@ export default function SpecialOfferSection() {
     if (isSupabaseConfigured) {
       try {
         channel = supabase
-          .channel("public:special_offer_sync")
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "products" },
-            () => loadOffer()
-          )
+          .channel("public:special_offers_sync")
           .on(
             "postgres_changes",
             { event: "*", schema: "public", table: "special_offers" },
-            () => loadOffer()
+            () => loadOffer(),
           )
           .subscribe();
       } catch (e) {
@@ -132,84 +128,102 @@ export default function SpecialOfferSection() {
     };
   }, []);
 
+  const discountPercent = useMemo(() => {
+    if (!offer?.price || !offer?.originalPrice) return null;
+    const orig = Number(offer.originalPrice);
+    const curr = Number(offer.price);
+    if (orig > curr && orig > 0) {
+      return Math.round(((orig - curr) / orig) * 100);
+    }
+    return null;
+  }, [offer]);
+
+  useGSAP(
+    () => {
+      if (!offer || loading || isReducedMotion() || !sectionRef.current) return;
+
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: sectionRef.current,
+          start: 'top 80%',
+          once: true,
+        },
+        defaults: { ease: 'power3.out' },
+      });
+
+      tl.fromTo(
+        '.special-offer-card',
+        { opacity: 0, y: 40, scale: 0.97 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.8, ease: 'power4.out' }
+      )
+        .fromTo(
+          '.offer-img-box',
+          { opacity: 0, x: -30, scale: 0.94 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.8 },
+          '-=0.5'
+        )
+        .fromTo(
+          '.offer-info-col > *',
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.5, stagger: 0.08 },
+          '-=0.6'
+        );
+    },
+    { dependencies: [offer, loading], scope: sectionRef }
+  );
+
   if (loading) {
     return (
-      <section className="py-12 sm:py-16 md:py-20 bg-[#050505] border-t border-white/5">
+      <div className="py-10 sm:py-16 bg-[#050505] relative z-10 border-t border-white/5">
         <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-[#0a0a0a] rounded-2xl sm:rounded-3xl border border-white/10 p-8 sm:p-12 animate-pulse h-96 flex items-center justify-center">
-            <div className="w-8 h-8 border-4 border-apex-red border-t-transparent rounded-full animate-spin" />
-          </div>
+          <div className="h-[380px] bg-[#0a0a0a] border border-white/5 rounded-3xl animate-pulse" />
         </div>
-      </section>
+      </div>
     );
   }
 
-  // If disabled, expired, or no active offer: completely hide the section cleanly
-  if (!offer || offer.isActive === false) return null;
+  if (!offer || offer.is_active === false || offer.isActive === false) {
+    return null;
+  }
 
   const productSlug =
-    offer.slug || slugify(offer.name) || offer.productId || offer.id;
+    offer.slug ||
+    offer.product?.slug ||
+    slugify(offer.name) ||
+    `offer-${offer.id}`;
   const productImage =
+    offer.image_url ||
     offer.image ||
-    (Array.isArray(offer.images) && offer.images[0]) ||
-    "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&h=600&fit=crop";
-
-  const discountPercent =
-    Number(offer.discount) > 0
-      ? Number(offer.discount)
-      : offer.originalPrice &&
-          offer.price &&
-          Number(offer.originalPrice) > Number(offer.price)
-        ? Math.round(
-            ((Number(offer.originalPrice) - Number(offer.price)) /
-              Number(offer.originalPrice)) *
-              100,
-          )
-        : null;
+    offer.product?.images?.[0] ||
+    offer.product?.image ||
+    "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&h=800&fit=crop";
 
   return (
-    <section className="py-12 sm:py-16 md:py-24 bg-[#050505] relative z-10 overflow-hidden border-t border-white/5">
-      <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-80px" }}
-          transition={{ duration: 0.7, ease: "easeOut" }}
-          className="relative bg-gradient-to-br from-[#0c0c0c] via-[#080808] to-[#050505] rounded-2xl sm:rounded-3xl border border-white/10 overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.9)]"
-        >
-          {/* Ambient red spotlight aura */}
-          {/* <div className="absolute top-1/2 left-1/4 -translate-y-1/2 -translate-x-1/2 w-80 h-80 sm:w-[500px] sm:h-[500px] bg-apex-red/15 blur-[120px] rounded-full pointer-events-none z-0" /> */}
+    <section
+      ref={sectionRef}
+      className="py-12 sm:py-16 md:py-24 bg-[#050505] relative z-10 overflow-hidden border-t border-white/5"
+    >
+      <TechBackground variant="crosshair" glowPosition="center" />
 
-          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 items-center">
-            {/* LEFT COLUMN: Large Product Visual Display */}
+      <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div className="special-offer-card relative rounded-3xl border border-white/10 bg-gradient-to-b from-[#111111] to-[#070707] overflow-hidden shadow-[0_0_50px_rgba(220,38,38,0.15)] group">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-apex-red/10 blur-[120px] rounded-full pointer-events-none" />
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-0 items-center">
             <div className="lg:col-span-6 p-6 sm:p-10 lg:p-14 flex items-center justify-center relative">
-              <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
-                whileInView={{ scale: 1, opacity: 1 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-                className="relative w-full max-w-md aspect-square rounded-2xl bg-[#080808]/90 border border-white/10 p-6 sm:p-8 flex items-center justify-center group overflow-hidden shadow-2xl"
-              >
-                {/* Discount Badge */}
-                {discountPercent && (
-                  <div className="absolute top-4 left-4 z-20 bg-apex-red text-white text-xs font-black px-3 py-1.5 rounded-full uppercase tracking-wider shadow-[0_0_15px_rgba(220,38,38,0.5)]">
-                    -{discountPercent}% OFF
-                  </div>
-                )}
+              <div className="absolute w-64 h-64 sm:w-80 sm:h-80 bg-apex-red/25 rounded-full blur-[90px] pointer-events-none" />
 
-                {/* Product Image */}
+              <div className="offer-img-box relative z-10 w-full max-w-[340px] sm:max-w-[420px] aspect-square flex items-center justify-center">
                 <img
                   src={productImage}
                   alt={offer.name}
                   loading="lazy"
                   className="w-full h-full object-contain filter drop-shadow-[0_15px_30px_rgba(0,0,0,0.9)] group-hover:scale-105 transition-transform duration-500"
                 />
-              </motion.div>
+              </div>
             </div>
 
-            {/* RIGHT COLUMN: Product Information & Call to Action */}
-            <div className="lg:col-span-6 p-6 sm:p-10 lg:pr-14 lg:pl-4 flex flex-col justify-center text-left">
-              {/* Badge & Urgency Pill & Optional Countdown */}
+            <div className="offer-info-col lg:col-span-6 p-6 sm:p-10 lg:pr-14 lg:pl-4 flex flex-col justify-center text-left">
               <div className="flex items-center gap-2.5 flex-wrap mb-4">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-apex-red/15 text-apex-red text-[10px] sm:text-xs font-bold uppercase tracking-widest border border-apex-red/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-apex-red animate-ping" />
@@ -221,11 +235,9 @@ export default function SpecialOfferSection() {
                   {offer.dealLabel || "Limited Time Deal"}
                 </span>
 
-                {/* Live Countdown Timer if configured */}
                 <CountdownTimer endTime={offer.endAt || offer.ends_at || offer.end_time} />
               </div>
 
-              {/* Product Category & Rating */}
               <div className="flex items-center gap-3 mb-2">
                 <span className="text-xs uppercase font-bold text-gray-500 tracking-wider">
                   {offer.category}
@@ -240,18 +252,15 @@ export default function SpecialOfferSection() {
                 )}
               </div>
 
-              {/* Product Title */}
               <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white uppercase tracking-tight mb-3 sm:mb-4 leading-tight">
                 {offer.name}
               </h2>
 
-              {/* Product Description */}
               <p className="text-gray-400 text-xs sm:text-sm md:text-base mb-6 leading-relaxed line-clamp-3 max-w-xl">
                 {offer.description ||
                   "Experience premium sound and high-performance engineering designed for champions."}
               </p>
 
-              {/* Price Block */}
               <div className="flex items-baseline gap-3 sm:gap-4 mb-6 sm:mb-8 flex-wrap">
                 <span className="text-2xl sm:text-3xl md:text-4xl font-black text-apex-red tracking-tight font-mono">
                   {formatPrice(offer.price)}
@@ -269,7 +278,6 @@ export default function SpecialOfferSection() {
                 )}
               </div>
 
-              {/* Features List */}
               {Array.isArray(offer.features) && offer.features.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-6 max-w-md">
                   {offer.features.slice(0, 4).map((feat, idx) => (
@@ -284,15 +292,14 @@ export default function SpecialOfferSection() {
                 </div>
               )}
 
-              {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
-                <Link
+                <MagneticButton
                   to={`/product/${productSlug}`}
-                  className="btn-primary group inline-flex items-center justify-center px-8 py-3.5 rounded-xl font-bold uppercase tracking-wider text-xs sm:text-sm shadow-[0_0_25px_rgba(220,38,38,0.4)] hover:shadow-[0_0_40px_rgba(220,38,38,0.7)] transition-all"
+                  className="btn-primary inline-flex items-center justify-center px-8 py-3.5 rounded-xl font-bold uppercase tracking-wider text-xs sm:text-sm shadow-[0_0_25px_rgba(220,38,38,0.4)] hover:shadow-[0_0_40px_rgba(220,38,38,0.7)] transition-all"
                 >
                   <span>{offer.primaryButtonText || "SHOP NOW"}</span>
                   <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </Link>
+                </MagneticButton>
 
                 <Link
                   to="/deals"
@@ -302,7 +309,6 @@ export default function SpecialOfferSection() {
                 </Link>
               </div>
 
-              {/* Security / Quality Trust */}
               <div className="mt-6 pt-6 border-t border-white/5 flex items-center gap-4 text-[11px] text-gray-500">
                 <span className="flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5 text-apex-red" />{" "}
@@ -315,7 +321,7 @@ export default function SpecialOfferSection() {
               </div>
             </div>
           </div>
-        </motion.div>
+        </div>
       </div>
     </section>
   );

@@ -3,6 +3,22 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase.js';
 import { products as initialProducts } from '../data/products.js';
 import { categories as initialCategories } from '../data/categories.js';
 
+export const safeParseItems = (raw) => {
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  if (!raw) return [];
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter(Boolean);
+      if (parsed && typeof parsed === 'object') return [parsed];
+    } catch (e) {
+      return [];
+    }
+  }
+  if (typeof raw === 'object') return [raw];
+  return [];
+};
+
 // Helper to normalize Supabase snake_case & camelCase properties
 const normalizeProduct = (p) => {
   if (!p) return null;
@@ -181,11 +197,31 @@ const setLocalProducts = (list) => {
 
 const getLocalOrders = () => {
   if (typeof localStorage === 'undefined') return [];
-  const stored = localStorage.getItem(LOCAL_ORDERS_KEY);
-  if (stored) {
-    try { return JSON.parse(stored); } catch (e) { console.error(e); }
-  }
-  return [];
+  const results = [];
+  const map = new Map();
+
+  const parseAndAdd = (key) => {
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((o) => {
+            if (o && o.id && !map.has(String(o.id))) {
+              map.set(String(o.id), o);
+              results.push(o);
+            }
+          });
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
+
+  parseAndAdd(LOCAL_ORDERS_KEY);
+  parseAndAdd('apex_custom_orders');
+  return results;
 };
 
 const setLocalOrders = (list) => {
@@ -1554,6 +1590,14 @@ export const fetchOrders = fetchAdminOrders;
 
 export async function updateOrderStatus(orderIdentifier, status, orderNumberFallback = null) {
   const cleanStatus = status;
+  const isDelivered = String(cleanStatus || '').toLowerCase() === 'delivered';
+  const timestamp = new Date().toISOString();
+  const updateFields = {
+    status: cleanStatus,
+    updated_at: timestamp,
+    ...(isDelivered ? { delivered_at: timestamp } : {}),
+  };
+
   let updatedSupabase = false;
 
   if (isSupabaseConfigured) {
@@ -1562,7 +1606,7 @@ export async function updateOrderStatus(orderIdentifier, status, orderNumberFall
       if (typeof orderIdentifier === 'string' && orderIdentifier.toUpperCase().startsWith('APEX-')) {
         const { data, error } = await supabase
           .from('orders')
-          .update({ status: cleanStatus, updated_at: new Date().toISOString() })
+          .update(updateFields)
           .ilike('order_number', orderIdentifier.trim())
           .select();
         if (!error && data && data.length > 0) updatedSupabase = true;
@@ -1572,7 +1616,7 @@ export async function updateOrderStatus(orderIdentifier, status, orderNumberFall
       if (!updatedSupabase && orderNumberFallback) {
         const { data, error } = await supabase
           .from('orders')
-          .update({ status: cleanStatus, updated_at: new Date().toISOString() })
+          .update(updateFields)
           .ilike('order_number', String(orderNumberFallback).trim())
           .select();
         if (!error && data && data.length > 0) updatedSupabase = true;
@@ -1584,7 +1628,7 @@ export async function updateOrderStatus(orderIdentifier, status, orderNumberFall
         if (numId < 1000000000) {
           const { data, error } = await supabase
             .from('orders')
-            .update({ status: cleanStatus, updated_at: new Date().toISOString() })
+            .update(updateFields)
             .eq('id', numId)
             .select();
           if (!error && data && data.length > 0) updatedSupabase = true;
@@ -1604,12 +1648,18 @@ export async function updateOrderStatus(orderIdentifier, status, orderNumberFall
     const oNum = (o.order_number || '').toUpperCase();
     const oId = String(o.id || '').toUpperCase();
     if (oNum === searchKey || oId === searchKey || (fallbackKey && oNum === fallbackKey)) {
-      return { ...o, status: cleanStatus, updated_at: new Date().toISOString() };
+      return { ...o, ...updateFields };
     }
     return o;
   });
 
   setLocalOrders(updatedList);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('apex_orders_updated'));
+    window.dispatchEvent(new CustomEvent('apex_reviews_updated'));
+  }
+
   return updatedList.find(
     (o) =>
       (o.order_number || '').toUpperCase() === searchKey ||
@@ -1763,18 +1813,27 @@ function setLocalReviews(reviews) {
 }
 
 /**
+ * Upload customer review photo to Supabase Storage (or resilient fallback)
+ */
+export async function uploadReviewPhoto(file) {
+  return uploadImageToSupabase(file, 'reviews');
+}
+
+/**
  * Verify whether a customer has purchased and had this product DELIVERED.
  * Strictly checks:
  * 1. User must be authenticated or have a verified matching customer email.
- * 2. An order must exist containing this specific product ID/name.
+ * 2. An order must exist containing this specific product ID / slug / name.
  * 3. The order status MUST be 'Delivered'.
+ * 4. Checks if the customer has already submitted a review for this product.
  */
 export async function checkReviewEligibility({ productId, productName, productSlug, user, email }) {
   if (!user && !email) {
     return {
       eligible: false,
-      reason: 'Please sign in to your customer account to submit a review.',
       requiresAuth: true,
+      reason: 'Please sign in to your customer account to submit a verified review.',
+      orderStatus: 'not_logged_in',
     };
   }
 
@@ -1791,112 +1850,138 @@ export async function checkReviewEligibility({ productId, productName, productSl
           .select('*')
           .eq('customer_id', userId);
         if (!error && Array.isArray(data)) {
-          customerOrders = data;
+          customerOrders = [...data];
         }
       }
-      if (customerOrders.length === 0 && customerEmail) {
+      if (customerEmail) {
         const { data, error } = await supabase
           .from('orders')
           .select('*')
           .ilike('customer_email', customerEmail);
         if (!error && Array.isArray(data)) {
-          customerOrders = data;
+          // Merge unique orders
+          data.forEach((o) => {
+            if (!customerOrders.some((co) => co.id === o.id)) {
+              customerOrders.push(o);
+            }
+          });
         }
       }
     }
 
-    if (customerOrders.length === 0) {
-      const localOrders = getLocalOrders();
-      customerOrders = localOrders.filter(
-        (o) =>
-          (userId && (o.customer_id === userId || o.user_id === userId)) ||
-          (customerEmail && (o.customer_email || '').toLowerCase() === customerEmail)
-      );
-    }
+    // Always merge local orders for complete purchase verification
+    const localOrders = getLocalOrders();
+    const matchedLocal = localOrders.filter(
+      (o) =>
+        (userId && (o.customer_id === userId || o.user_id === userId)) ||
+        (customerEmail && (o.customer_email || '').toLowerCase() === customerEmail)
+    );
+    matchedLocal.forEach((lo) => {
+      if (!customerOrders.some((co) => co.id === lo.id)) {
+        customerOrders.push(lo);
+      }
+    });
+
+    // Helper to match item with requested product
+    const matchesProduct = (it) => {
+      if (!it) return false;
+      const itId = it.id || it.product_id;
+      if (productId && (String(itId) === String(productId) || (!isNaN(Number(productId)) && Number(itId) === Number(productId)))) {
+        return true;
+      }
+      if (productSlug && it.slug === productSlug) {
+        return true;
+      }
+      if (productName && (it.name || '').toLowerCase().trim() === productName.toLowerCase().trim()) {
+        return true;
+      }
+      return false;
+    };
 
     // Filter delivered orders
     const deliveredOrders = customerOrders.filter(
       (o) => (o.status || '').toLowerCase() === 'delivered'
     );
 
-    if (deliveredOrders.length === 0) {
-      // Check if user has an order currently in transit or processing
-      const activeOrders = customerOrders.filter(
-        (o) =>
-          (o.status || '').toLowerCase() !== 'delivered' &&
-          (o.status || '').toLowerCase() !== 'cancelled'
-      );
+    let matchedDeliveredOrder = null;
+    let matchedDeliveredItem = null;
 
-      const hasActiveOrder = activeOrders.some((o) => {
-        const items = Array.isArray(o.items)
-          ? o.items
-          : typeof o.items === 'string'
-          ? JSON.parse(o.items)
-          : [];
-        return items.some(
-          (it) =>
-            Number(it.id || it.product_id) === Number(productId) ||
-            (productName && (it.name || '').toLowerCase() === productName.toLowerCase())
-        );
-      });
-
-      if (hasActiveOrder) {
-        return {
-          eligible: false,
-          reason: 'Your order for this item is currently on its way. You can submit a review once your package is marked as Delivered!',
-          orderStatus: 'in_transit',
-        };
-      }
-
-      return {
-        eligible: false,
-        reason: 'Only verified customers who have purchased and received this product can write a review.',
-        orderStatus: 'none',
-      };
-    }
-
-    // Check if any of the delivered orders contains this product
-    let matchedOrder = null;
     for (const order of deliveredOrders) {
-      const items = Array.isArray(order.items)
-        ? order.items
-        : typeof order.items === 'string'
-        ? JSON.parse(order.items)
-        : [];
-      const hasItem = items.some(
-        (it) =>
-          Number(it.id || it.product_id) === Number(productId) ||
-          (productSlug && it.slug === productSlug) ||
-          (productName && (it.name || '').toLowerCase() === productName.toLowerCase())
-      );
-      if (hasItem) {
-        matchedOrder = order;
+      const items = safeParseItems(order.items);
+      const foundItem = items.find(matchesProduct);
+      if (foundItem) {
+        matchedDeliveredOrder = order;
+        matchedDeliveredItem = foundItem;
         break;
       }
     }
 
-    if (!matchedOrder) {
+    // Check if user has an existing review for this product
+    const existingReviews = await fetchCustomerReviews(userId, customerEmail);
+    const existing = existingReviews.find(
+      (r) =>
+        (productId && (String(r.product_id) === String(productId) || (!isNaN(Number(productId)) && Number(r.product_id) === Number(productId)))) ||
+        (productName && (r.product_name || '').toLowerCase().trim() === productName.toLowerCase().trim())
+    );
+
+    // If delivered order found
+    if (matchedDeliveredOrder) {
+      if (existing) {
+        return {
+          eligible: true,
+          isAlreadyReviewed: true,
+          orderStatus: 'delivered',
+          order: matchedDeliveredOrder,
+          orderItem: matchedDeliveredItem,
+          existingReview: existing,
+          reason: 'You have already reviewed this purchase. You can edit your review anytime.',
+        };
+      }
+
       return {
-        eligible: false,
-        reason: 'You can only review products that you have purchased and had delivered.',
-        orderStatus: 'not_purchased',
+        eligible: true,
+        isAlreadyReviewed: false,
+        orderStatus: 'delivered',
+        order: matchedDeliveredOrder,
+        orderItem: matchedDeliveredItem,
+        existingReview: null,
       };
     }
 
-    // Check existing customer review
-    const existingReviews = await fetchCustomerReviews(userId, customerEmail);
-    const existing = existingReviews.find((r) => Number(r.product_id) === Number(productId));
+    // If no delivered order, check if user has an order in transit or pending
+    const activeOrders = customerOrders.filter(
+      (o) =>
+        (o.status || '').toLowerCase() !== 'delivered' &&
+        (o.status || '').toLowerCase() !== 'cancelled' &&
+        (o.status || '').toLowerCase() !== 'refunded'
+    );
+
+    const hasActiveOrder = activeOrders.some((o) => {
+      const items = safeParseItems(o.items);
+      return items.some(matchesProduct);
+    });
+
+    if (hasActiveOrder) {
+      return {
+        eligible: false,
+        requiresAuth: false,
+        orderStatus: 'in_transit',
+        reason: 'Your order for this item is currently in progress. You can submit a review once your package is delivered!',
+      };
+    }
 
     return {
-      eligible: true,
-      order: matchedOrder,
-      existingReview: existing || null,
+      eligible: false,
+      requiresAuth: false,
+      orderStatus: 'not_purchased',
+      reason: 'Purchase this product to leave a verified review.',
     };
   } catch (err) {
     console.warn('checkReviewEligibility error:', err);
     return {
       eligible: false,
       reason: 'Error verifying purchase. Please try again.',
+      orderStatus: 'error',
     };
   }
 }
@@ -1906,17 +1991,22 @@ export async function checkReviewEligibility({ productId, productName, productSl
  */
 export async function fetchProductReviews(productId) {
   if (!productId) return [];
-
   if (isSupabaseConfigured) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('reviews')
         .select('*')
-        .eq('product_id', Number(productId))
-        .eq('status', 'approved')
-        .order('created_at', { ascending: false });
+        .eq('status', 'approved');
 
-      if (!error && data) {
+      if (!isNaN(Number(productId))) {
+        query = query.eq('product_id', Number(productId));
+      } else {
+        query = query.eq('product_id', productId);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
         return data;
       }
     } catch (e) {
@@ -1926,7 +2016,7 @@ export async function fetchProductReviews(productId) {
 
   const local = getLocalReviews();
   return local
-    .filter((r) => Number(r.product_id) === Number(productId) && r.status === 'approved')
+    .filter((r) => (String(r.product_id) === String(productId) || (!isNaN(Number(productId)) && Number(r.product_id) === Number(productId))) && (r.status || 'approved') === 'approved')
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 }
 
@@ -1957,7 +2047,7 @@ export async function fetchCustomerReviews(userId, userEmail) {
   const local = getLocalReviews();
   const filteredLocal = local.filter(
     (r) =>
-      (userId && r.customer_id === userId) ||
+      (userId && (r.customer_id === userId || r.user_id === userId)) ||
       (userEmail && (r.customer_email || '').toLowerCase() === (userEmail || '').toLowerCase())
   );
 
@@ -1968,33 +2058,86 @@ export async function fetchCustomerReviews(userId, userEmail) {
 }
 
 /**
- * Fetch unreviewed products from delivered orders for the authenticated customer
+ * Fetch eligible unreviewed items from delivered orders
  */
 export async function fetchEligibleUnreviewedItems(user) {
   if (!user) return [];
   try {
-    const orders = await fetchMyOrders();
-    const delivered = orders.filter((o) => (o.status || '').toLowerCase() === 'delivered');
+    const userId = user?.id;
+    const customerEmail = (user?.email || '').trim().toLowerCase();
+
+    let customerOrders = [];
+    if (isSupabaseConfigured) {
+      if (userId) {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('customer_id', userId);
+        if (!error && Array.isArray(data)) {
+          customerOrders = [...data];
+        }
+      }
+      if (customerEmail) {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .ilike('customer_email', customerEmail);
+        if (!error && Array.isArray(data)) {
+          data.forEach((o) => {
+            if (!customerOrders.some((co) => co.id === o.id)) {
+              customerOrders.push(o);
+            }
+          });
+        }
+      }
+    }
+
+    const localOrders = getLocalOrders();
+    const matchedLocal = localOrders.filter(
+      (o) =>
+        (userId && (o.customer_id === userId || o.user_id === userId)) ||
+        (customerEmail && (o.customer_email || '').toLowerCase() === customerEmail)
+    );
+    matchedLocal.forEach((lo) => {
+      if (!customerOrders.some((co) => co.id === lo.id)) {
+        customerOrders.push(lo);
+      }
+    });
+
+    const delivered = customerOrders.filter((o) => (o.status || '').toLowerCase() === 'delivered');
     const existingReviews = await fetchCustomerReviews(user.id, user.email);
-    const reviewedProductIds = new Set(existingReviews.map((r) => Number(r.product_id)));
+    const reviewedProducts = new Set();
+    existingReviews.forEach((r) => {
+      if (r.product_id) reviewedProducts.add(String(r.product_id));
+      if (r.product_name) reviewedProducts.add(r.product_name.toLowerCase().trim());
+    });
 
     const unreviewed = [];
     for (const order of delivered) {
       const items = safeParseItems(order.items);
       for (const item of items) {
-        const pid = Number(item.id || item.product_id);
-        if (pid && !reviewedProductIds.has(pid) && !unreviewed.some((u) => u.productId === pid)) {
+        const pid = item.id || item.product_id;
+        const pName = item.name || item.product_name || 'APEX Gear';
+        const isAlreadyReviewed = 
+          (pid && reviewedProducts.has(String(pid))) ||
+          (pName && reviewedProducts.has(pName.toLowerCase().trim()));
+
+        if (pid && !isAlreadyReviewed && !unreviewed.some((u) => String(u.productId) === String(pid))) {
           unreviewed.push({
             productId: pid,
-            productName: item.name || item.product_name,
+            productName: pName,
             productImage: item.image || item.images?.[0] || '',
             price: item.price,
-            orderNumber: order.order_number,
-            deliveredAt: order.updated_at || order.created_at,
+            quantity: item.quantity || 1,
+            orderId: order.id,
+            orderNumber: order.order_number || `#${order.id}`,
+            orderItemId: item.order_item_id || item.id || null,
+            deliveredAt: order.delivered_at || order.updated_at || order.created_at,
           });
         }
       }
     }
+
     return unreviewed;
   } catch (err) {
     console.warn('fetchEligibleUnreviewedItems error:', err);
@@ -2003,7 +2146,7 @@ export async function fetchEligibleUnreviewedItems(user) {
 }
 
 /**
- * Submit or Edit a verified customer review
+ * Submit or Update a Verified Customer Review
  */
 export async function submitProductReview({
   productId,
@@ -2011,24 +2154,26 @@ export async function submitProductReview({
   customerName,
   customerEmail,
   rating,
+  title = '',
   reviewText,
-  user = null,
+  photos = [],
+  user,
   existingReviewId = null,
 }) {
-  if (!productId || !rating || !reviewText) {
-    throw new Error('Please fill in all required review fields.');
+  if (!user && !customerEmail) {
+    throw new Error('Authentication required to submit a verified review.');
   }
 
-  // Verify eligibility
-  const verification = await checkReviewEligibility({
+  // 1. Verify Purchase Eligibility
+  const eligibility = await checkReviewEligibility({
     productId,
     productName,
     user,
-    email: customerEmail || user?.email,
+    email: customerEmail,
   });
 
-  if (!verification.eligible && !existingReviewId) {
-    throw new Error(verification.reason || 'You are not eligible to review this product.');
+  if (!eligibility.eligible && !existingReviewId) {
+    throw new Error(eligibility.reason || 'You are not eligible to review this product.');
   }
 
   const userId = user?.id || null;
@@ -2036,16 +2181,19 @@ export async function submitProductReview({
   const email = (user?.email || customerEmail || '').trim().toLowerCase();
 
   const payload = {
-    product_id: Number(productId),
+    product_id: !isNaN(Number(productId)) ? Number(productId) : productId,
     product_name: productName || 'APEX Product',
     customer_id: userId,
     customer_name: name,
     customer_email: email,
     rating: Math.max(1, Math.min(5, Number(rating))),
+    title: (title || '').trim(),
     review_text: reviewText.trim(),
+    photos: Array.isArray(photos) ? photos : [],
     status: 'approved', // Auto-approved for verified delivered buyers
     verified_purchase: true,
-    order_id: verification.order?.id || verification.order?.order_number || null,
+    order_id: eligibility.order?.order_number || String(eligibility.order?.id || ''),
+    order_item_id: eligibility.orderItem?.id || null,
     updated_at: new Date().toISOString(),
   };
 
@@ -2063,6 +2211,9 @@ export async function submitProductReview({
     }
 
     await calculateProductRating(productId);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('apex_reviews_updated', { detail: { productId, reviewId: existingReviewId } }));
+    }
     return { ...payload, id: existingReviewId };
   } else {
     payload.created_at = new Date().toISOString();
@@ -2075,6 +2226,9 @@ export async function submitProductReview({
         const data = await safeSupabaseMutation('reviews', 'insert', payload);
         if (data) {
           await calculateProductRating(productId);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('apex_reviews_updated', { detail: { productId, reviewId: data.id } }));
+          }
           return data;
         }
       } catch (e) {
@@ -2083,6 +2237,9 @@ export async function submitProductReview({
     }
 
     await calculateProductRating(productId);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('apex_reviews_updated', { detail: { productId, reviewId: created.id } }));
+    }
     return created;
   }
 }
@@ -2108,7 +2265,7 @@ export async function fetchAdminReviews({ status = 'all', rating = 'all', produc
       }
 
       const { data, error } = await query;
-      if (!error && data) {
+      if (!error && Array.isArray(data)) {
         reviews = data;
       }
     } catch (e) {
@@ -2132,7 +2289,8 @@ export async function fetchAdminReviews({ status = 'all', rating = 'all', produc
       const matchEmail = (r.customer_email || '').toLowerCase().includes(q);
       const matchProduct = (r.product_name || '').toLowerCase().includes(q);
       const matchText = (r.review_text || '').toLowerCase().includes(q);
-      if (!matchName && !matchEmail && !matchProduct && !matchText) return false;
+      const matchOrder = (r.order_id || '').toLowerCase().includes(q);
+      if (!matchName && !matchEmail && !matchProduct && !matchText && !matchOrder) return false;
     }
 
     return true;
@@ -2173,6 +2331,10 @@ export async function updateReviewStatus(reviewId, status) {
     await calculateProductRating(updatedRecord.product_id);
   }
 
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('apex_reviews_updated', { detail: { reviewId, status } }));
+  }
+
   return updatedRecord;
 }
 
@@ -2203,6 +2365,10 @@ export async function deleteReview(reviewId) {
     await calculateProductRating(targetProductId);
   }
 
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('apex_reviews_updated', { detail: { reviewId } }));
+  }
+
   return true;
 }
 
@@ -2222,7 +2388,8 @@ export async function calculateProductRating(productId) {
   }
 
   try {
-    await updateProduct(Number(productId), {
+    const cleanId = !isNaN(Number(productId)) ? Number(productId) : productId;
+    await updateProduct(cleanId, {
       rating: averageRating,
       reviews: count
     });
@@ -2496,10 +2663,28 @@ function saveUnifiedBannersToStorage(banners) {
  * Fetches directly from Supabase (tables or global Supabase CMS cloud store)
  * @param {boolean} onlyActive - If true, returns only active banners
  */
+// ── Table availability cache (prevents repeated 404 queries) ──
+const _tableAvailability = {
+  banners: null,
+  hero_slides: null,
+};
+
 // ── Banner query cache (prevents Hero + PromotionalBanner duplicate queries) ──
 let _bannersCachePromise = null;
 let _bannersCacheTime = 0;
 const _BANNERS_CACHE_TTL = 30000; // 30 seconds
+
+/**
+ * Synchronously retrieves initial hero slides for instantaneous 0ms rendering
+ */
+export function getInitialHeroSlides() {
+  const stored = getUnifiedBannersFromStorage();
+  if (Array.isArray(stored) && stored.length > 0) {
+    const active = stored.filter((b) => b.is_active !== false);
+    if (active.length > 0) return active;
+  }
+  return INITIAL_SEED_HERO_SLIDES;
+}
 
 export async function fetchHeroBanners(onlyActive = true) {
   // Only cache the storefront (active-only) path
@@ -2520,48 +2705,68 @@ export async function fetchHeroBanners(onlyActive = true) {
 export function invalidateBannersCache() {
   _bannersCachePromise = null;
   _bannersCacheTime = 0;
+  _tableAvailability.banners = null;
+  _tableAvailability.hero_slides = null;
 }
 
 async function _fetchHeroBannersImpl(onlyActive) {
   let banners = [];
 
-  // 1. Try fetching from Supabase 'banners' or 'hero_slides' table
+  // 1. Fetch from Supabase with parallel queries and 1.5s timeout protection
   if (isSupabaseConfigured) {
-    try {
-      let query = supabase.from('banners').select('*').order('display_order', { ascending: true });
-      if (onlyActive) query = query.eq('is_active', true);
-      const { data, error } = await query;
-      if (!error && Array.isArray(data) && data.length > 0) {
-        banners = data.map((b, idx) => normalizeBannerItem(b, idx + 1));
-      }
-    } catch (e) {}
+    const queryPromises = [];
 
-    if (banners.length === 0) {
+    if (_tableAvailability.banners !== false) {
+      let bQuery = supabase.from('banners').select('*').order('display_order', { ascending: true });
+      if (onlyActive) bQuery = bQuery.eq('is_active', true);
+      queryPromises.push(
+        bQuery.then(({ data, error }) => {
+          if (error) {
+            if (error.code === 'PGRST205' || (error.message && error.message.includes('Could not find'))) {
+              _tableAvailability.banners = false;
+            }
+            return null;
+          }
+          _tableAvailability.banners = true;
+          return data;
+        }).catch(() => null)
+      );
+    }
+
+    if (_tableAvailability.hero_slides !== false) {
+      let hQuery = supabase.from('hero_slides').select('*').order('sort_order', { ascending: true });
+      if (onlyActive) hQuery = hQuery.eq('is_active', true);
+      queryPromises.push(
+        hQuery.then(({ data, error }) => {
+          if (error) {
+            if (error.code === 'PGRST205' || (error.message && error.message.includes('Could not find'))) {
+              _tableAvailability.hero_slides = false;
+            }
+            return null;
+          }
+          _tableAvailability.hero_slides = true;
+          return data;
+        }).catch(() => null)
+      );
+    }
+
+    if (queryPromises.length > 0) {
       try {
-        let query = supabase.from('hero_slides').select('*').order('sort_order', { ascending: true });
-        if (onlyActive) query = query.eq('is_active', true);
-        const { data, error } = await query;
-        if (!error && Array.isArray(data) && data.length > 0) {
-          banners = data.map((b, idx) => normalizeBannerItem(b, idx + 1));
+        const results = await Promise.race([
+          Promise.all(queryPromises),
+          new Promise((resolve) => setTimeout(() => resolve([]), 1500)),
+        ]);
+        for (const res of results) {
+          if (Array.isArray(res) && res.length > 0) {
+            banners = res.map((b, idx) => normalizeBannerItem(b, idx + 1));
+            break;
+          }
         }
       } catch (e) {}
     }
-
-    // 2. Fetch from Global Supabase Cloud CMS record (accessible globally on all devices)
-    if (banners.length === 0) {
-      try {
-        const globalCms = await fetchGlobalSupabaseCMSConfig();
-        if (globalCms?.banners && Array.isArray(globalCms.banners) && globalCms.banners.length > 0) {
-          banners = globalCms.banners.map((b, idx) => normalizeBannerItem(b, idx + 1));
-          saveUnifiedBannersToStorage(banners);
-        }
-      } catch (e) {
-        console.warn('Failed to fetch banners from global Supabase CMS:', e);
-      }
-    }
   }
 
-  // 3. Fallback to unified local storage
+  // 2. Fallback to unified local storage
   if (banners.length === 0) {
     banners = getUnifiedBannersFromStorage();
   }
@@ -3792,6 +3997,611 @@ export async function approveReturnRefund(returnId, details) {
  */
 export async function uploadReturnEvidence(file) {
   return uploadImageToSupabase(file, 'returns');
+}
+
+// ==========================================
+// 14. ADMIN AUTHORIZATION & MANAGEMENT SERVICES
+// ==========================================
+
+const LOCAL_ADMIN_USERS_KEY = 'apex_admin_users';
+const SEED_ADMIN_EMAILS = ['admin@apexstore.pk', 'apexstore530@gmail.com', 'apexstore54@gmail.com', 'admin@apexstore.com'];
+let inMemoryAdminUsers = null;
+
+function logAuthDebug(uid, email, adminMatch, resolvedRole) {
+  if (typeof window !== 'undefined' || process.env.NODE_ENV !== 'production') {
+    console.log('%c[APEX AUTH VERIFICATION]', 'background: #dc2626; color: white; font-weight: bold; padding: 2px 6px; border-radius: 4px;', {
+      uid: uid || 'none',
+      email: email || 'none',
+      adminMatch: Boolean(adminMatch),
+      role: resolvedRole || 'null'
+    });
+  }
+}
+
+function getLocalAdminUsers() {
+  if (inMemoryAdminUsers && Array.isArray(inMemoryAdminUsers) && inMemoryAdminUsers.length > 0) {
+    // Ensure all seeds exist in memory
+    for (const seedEmail of SEED_ADMIN_EMAILS) {
+      if (!inMemoryAdminUsers.some((a) => a.email?.toLowerCase() === seedEmail.toLowerCase())) {
+        inMemoryAdminUsers.push({
+          id: inMemoryAdminUsers.length + 1,
+          email: seedEmail,
+          full_name: seedEmail.split('@')[0],
+          role: seedEmail === 'apexstore54@gmail.com' || seedEmail === 'admin@apexstore.pk' || seedEmail === 'apexstore530@gmail.com' ? 'superadmin' : 'admin',
+          user_id: `uuid-seed-${seedEmail}`,
+          status: 'ACTIVE',
+          is_active: true,
+          created_at: new Date().toISOString()
+        });
+      }
+    }
+    return [...inMemoryAdminUsers];
+  }
+
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(LOCAL_ADMIN_USERS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Merge seed admins
+          for (const seedEmail of SEED_ADMIN_EMAILS) {
+            if (!parsed.some((a) => a.email?.toLowerCase() === seedEmail.toLowerCase())) {
+              parsed.push({
+                id: parsed.length + 1,
+                email: seedEmail,
+                full_name: seedEmail.split('@')[0],
+                role: seedEmail === 'apexstore54@gmail.com' || seedEmail === 'admin@apexstore.pk' || seedEmail === 'apexstore530@gmail.com' ? 'superadmin' : 'admin',
+                user_id: `uuid-seed-${seedEmail}`,
+                status: 'ACTIVE',
+                is_active: true,
+                created_at: new Date().toISOString()
+              });
+            }
+          }
+          inMemoryAdminUsers = parsed;
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse local admin users:', e);
+    }
+  }
+
+  const initial = SEED_ADMIN_EMAILS.map((email, idx) => ({
+    id: idx + 1,
+    email,
+    full_name: email.split('@')[0],
+    role: email === 'apexstore54@gmail.com' || email === 'admin@apexstore.pk' || email === 'apexstore530@gmail.com' ? 'superadmin' : 'admin',
+    user_id: `uuid-seed-${idx + 1}`,
+    status: 'ACTIVE',
+    is_active: true,
+    created_at: new Date().toISOString()
+  }));
+
+  inMemoryAdminUsers = initial;
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(LOCAL_ADMIN_USERS_KEY, JSON.stringify(initial));
+  }
+  return initial;
+}
+
+function setLocalAdminUsers(list) {
+  inMemoryAdminUsers = [...list];
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(LOCAL_ADMIN_USERS_KEY, JSON.stringify(list));
+  }
+}
+
+/**
+ * Verify whether a user is an authorized administrator
+ * @param {string} userId - Supabase auth user UUID
+ * @param {string} userEmail - Authenticated user email
+ * @returns {Promise<{ isAdmin: boolean, role: string, isSuperAdmin: boolean, record: object | null }>}
+ */
+export async function checkIsAdmin(userId, userEmail) {
+  const cleanEmail = (userEmail || '').trim().toLowerCase();
+  if (!userId && !cleanEmail) {
+    logAuthDebug(userId, cleanEmail, false, 'none');
+    return { isAdmin: false, role: 'none', isSuperAdmin: false, record: null };
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      // 1. Primary Check: Call PostgreSQL get_admin_role() RPC function if available
+      if (userId) {
+        try {
+          const { data: roleData, error: roleError } = await supabase.rpc('get_admin_role', { 
+            check_user_id: userId 
+          });
+          
+          if (!roleError && roleData) {
+            const normalizedRole = roleData === 'super_admin' || roleData === 'superadmin' ? 'superadmin' : 'admin';
+            const res = {
+              isAdmin: true,
+              role: normalizedRole,
+              isSuperAdmin: normalizedRole === 'superadmin',
+              record: { user_id: userId, email: cleanEmail, role: normalizedRole }
+            };
+            logAuthDebug(userId, cleanEmail, true, normalizedRole);
+            return res;
+          }
+        } catch (e) {}
+      }
+
+      // 2. Query public.admin_users by email first (safe across all table schema versions)
+      if (cleanEmail) {
+        const { data: emailData, error: emailErr } = await supabase
+          .from('admin_users')
+          .select('*')
+          .ilike('email', cleanEmail)
+          .maybeSingle();
+
+        if (!emailErr && emailData && emailData.is_active !== false) {
+          // Attempt linking user_id if record matched by email but lacked user_id
+          if (userId && !emailData.user_id) {
+            try {
+              await supabase
+                .from('admin_users')
+                .update({ user_id: userId, updated_at: new Date().toISOString() })
+                .eq('id', emailData.id);
+            } catch (e) {}
+          }
+          const normalizedRole = emailData.role === 'super_admin' || emailData.role === 'superadmin' ? 'superadmin' : 'admin';
+          const res = {
+            isAdmin: true,
+            role: normalizedRole,
+            isSuperAdmin: normalizedRole === 'superadmin',
+            record: { ...emailData, role: normalizedRole }
+          };
+          logAuthDebug(userId, cleanEmail, true, normalizedRole);
+          return res;
+        }
+      }
+
+      // 3. Query public.admin_users by user_id (if column exists)
+      if (userId) {
+        try {
+          const { data: idData, error: idErr } = await supabase
+            .from('admin_users')
+            .select('*')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+          if (!idErr && idData && idData.is_active !== false) {
+            const normalizedRole = idData.role === 'super_admin' || idData.role === 'superadmin' ? 'superadmin' : 'admin';
+            const res = {
+              isAdmin: true,
+              role: normalizedRole,
+              isSuperAdmin: normalizedRole === 'superadmin',
+              record: { ...idData, role: normalizedRole }
+            };
+            logAuthDebug(userId, cleanEmail, true, normalizedRole);
+            return res;
+          }
+        } catch (e) {}
+      }
+    } catch (err) {
+      console.warn('Supabase admin check warning:', err);
+    }
+  }
+
+  // 4. Fallback / Offline / Pre-Authorized Seed Allowlist
+  const localAdmins = getLocalAdminUsers();
+  const match = localAdmins.find(
+    (a) => (userId && a.user_id === userId) || (cleanEmail && a.email?.toLowerCase() === cleanEmail)
+  );
+
+  if (match && match.is_active !== false) {
+    if (userId && (!match.user_id || match.user_id.startsWith('uuid-seed-'))) {
+      match.user_id = userId;
+      match.status = 'ACTIVE';
+      setLocalAdminUsers(localAdmins.map((a) => (a.id === match.id ? match : a)));
+    }
+    const normalizedRole = match.role === 'super_admin' || match.role === 'superadmin' ? 'superadmin' : 'admin';
+    const res = {
+      isAdmin: true,
+      role: normalizedRole,
+      isSuperAdmin: normalizedRole === 'superadmin',
+      record: { ...match, role: normalizedRole }
+    };
+    logAuthDebug(userId, cleanEmail, true, normalizedRole);
+    return res;
+  }
+
+  logAuthDebug(userId, cleanEmail, false, 'none');
+  return {
+    isAdmin: false,
+    role: 'none',
+    isSuperAdmin: false,
+    record: null
+  };
+}
+
+/**
+ * Fetch all registered administrator accounts
+ */
+export async function fetchAdminUsers() {
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('admin_users')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        const local = getLocalAdminUsers();
+        // Merge DB data with local state so pre-authorized seeds are never lost
+        const dbEmails = new Set(data.map((d) => d.email?.toLowerCase()));
+        const merged = [
+          ...data.map((admin) => ({
+            ...admin,
+            role: admin.role === 'super_admin' || admin.role === 'superadmin' ? 'superadmin' : 'admin',
+            status: admin.user_id ? 'ACTIVE' : 'PENDING'
+          })),
+          ...local.filter((l) => !dbEmails.has(l.email?.toLowerCase()))
+        ];
+
+        setLocalAdminUsers(merged);
+        return merged;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch admin users from Supabase:', err);
+    }
+  }
+  
+  const local = getLocalAdminUsers();
+  return local.map((admin) => ({
+    ...admin,
+    role: admin.role === 'super_admin' || admin.role === 'superadmin' ? 'superadmin' : 'admin',
+    status: admin.user_id && !admin.user_id.startsWith('uuid-seed-') ? 'ACTIVE' : 'PENDING'
+  }));
+}
+
+/**
+ * Authorize a new administrator (Supports pending invite with user_id = NULL)
+ */
+export async function addAdminUser({ email, role = 'admin', fullName = '', userId = null }) {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+    throw new Error('Please provide a valid administrator email address.');
+  }
+
+  const normalizedRole = role === 'super_admin' || role === 'superadmin' ? 'superadmin' : 'admin';
+  const cleanName = fullName?.trim() || cleanEmail.split('@')[0];
+
+  if (isSupabaseConfigured) {
+    // 1. Try secure RPC authorize_admin
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('authorize_admin', {
+        admin_email: cleanEmail,
+        admin_role: normalizedRole,
+        admin_full_name: cleanName
+      });
+
+      if (!rpcError && rpcData) {
+        const created = {
+          ...rpcData,
+          role: normalizedRole,
+          status: rpcData.user_id ? 'ACTIVE' : 'PENDING'
+        };
+        const local = getLocalAdminUsers();
+        setLocalAdminUsers([created, ...local.filter((a) => a.email?.toLowerCase() !== cleanEmail)]);
+        return created;
+      }
+
+      if (rpcError) {
+        // If error is a business exception, throw it directly
+        if (!rpcError.message?.includes('schema cache') && !rpcError.message?.includes('function')) {
+          if (rpcError.message?.includes('already authorized') || rpcError.code === '23505') {
+            throw new Error(`An administrator with email "${cleanEmail}" is already authorized.`);
+          }
+          if (rpcError.message?.includes('Superadmin privileges') || rpcError.code === '42501') {
+            throw new Error('Access Denied: Only a Super Admin can authorize new administrators.');
+          }
+          throw new Error(rpcError.message);
+        }
+      }
+    } catch (rpcErr) {
+      if (!rpcErr.message?.includes('schema cache') && !rpcErr.message?.includes('function')) {
+        throw rpcErr;
+      }
+    }
+
+    // 2. Direct table insert fallback
+    try {
+      let payload = {
+        email: cleanEmail,
+        role: normalizedRole,
+        full_name: cleanName,
+        user_id: userId || null,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      let { data, error } = await supabase
+        .from('admin_users')
+        .insert([payload])
+        .select()
+        .single();
+
+      // If user_id or updated_at columns don't exist yet on remote table, retry with base columns
+      if (error && error.code === '42703') {
+        const basePayload = {
+          email: cleanEmail,
+          role: normalizedRole === 'superadmin' ? 'super_admin' : 'admin',
+          full_name: cleanName,
+          is_active: true
+        };
+        const retry = await supabase
+          .from('admin_users')
+          .insert([basePayload])
+          .select()
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (!error && data) {
+        const created = {
+          ...data,
+          role: normalizedRole,
+          status: data.user_id ? 'ACTIVE' : 'PENDING'
+        };
+        const local = getLocalAdminUsers();
+        setLocalAdminUsers([created, ...local.filter((a) => a.email?.toLowerCase() !== cleanEmail)]);
+        return created;
+      }
+
+      if (error) {
+        if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint')) {
+          throw new Error(`An administrator with email "${cleanEmail}" is already authorized.`);
+        }
+        if (error.code === '42501' || error.message?.includes('policy')) {
+          throw new Error('Access Denied: You do not have permission to authorize administrators.');
+        }
+        throw new Error(error.message || 'Failed to authorize administrator.');
+      }
+    } catch (insertErr) {
+      if (insertErr.message && !insertErr.message.includes('Table') && !insertErr.message.includes('schema')) {
+        throw insertErr;
+      }
+    }
+  }
+
+  // Local fallback
+  const local = getLocalAdminUsers();
+  if (local.some((a) => a.email?.toLowerCase() === cleanEmail)) {
+    throw new Error(`An administrator with email "${cleanEmail}" is already authorized.`);
+  }
+
+  const created = {
+    id: `local-${Date.now()}`,
+    email: cleanEmail,
+    role: normalizedRole,
+    full_name: cleanName,
+    user_id: userId || null,
+    status: userId ? 'ACTIVE' : 'PENDING',
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  setLocalAdminUsers([created, ...local]);
+  return created;
+}
+
+/**
+ * Update an existing administrator (Role, Name, Email)
+ */
+export async function updateAdminUser({ id, role, fullName, email, currentAdminEmail }) {
+  if (!id) throw new Error('Administrator ID is required.');
+
+  const normalizedRole = role === 'super_admin' || role === 'superadmin' ? 'superadmin' : 'admin';
+  const cleanEmail = email ? email.trim().toLowerCase() : undefined;
+  const cleanName = fullName?.trim();
+
+  if (isSupabaseConfigured) {
+    // 1. Try secure RPC update_admin
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('update_admin', {
+        target_admin_id: String(id),
+        new_role: normalizedRole,
+        new_full_name: cleanName || null,
+        new_email: cleanEmail || null
+      });
+
+      if (!rpcError && rpcData) {
+        const updated = {
+          ...rpcData,
+          role: normalizedRole,
+          status: rpcData.user_id ? 'ACTIVE' : 'PENDING'
+        };
+        const local = getLocalAdminUsers();
+        setLocalAdminUsers(local.map((a) => (String(a.id) === String(id) ? updated : a)));
+        return updated;
+      }
+
+      if (rpcError) {
+        if (!rpcError.message?.includes('schema cache') && !rpcError.message?.includes('function')) {
+          if (rpcError.message?.includes('last remaining Super Admin')) {
+            throw new Error('Cannot demote the last remaining Super Admin. At least one Super Admin must remain.');
+          }
+          if (rpcError.message?.includes('already exists')) {
+            throw new Error(`An administrator with email "${cleanEmail}" already exists.`);
+          }
+          if (rpcError.message?.includes('Superadmin privileges') || rpcError.code === '42501') {
+            throw new Error('Access Denied: Only a Super Admin can modify administrators.');
+          }
+          throw new Error(rpcError.message);
+        }
+      }
+    } catch (rpcErr) {
+      if (!rpcErr.message?.includes('schema cache') && !rpcErr.message?.includes('function')) {
+        throw rpcErr;
+      }
+    }
+
+    // 2. Direct table update fallback
+    try {
+      const patch = {
+        role: normalizedRole === 'superadmin' ? 'super_admin' : 'admin'
+      };
+      if (cleanName) patch.full_name = cleanName;
+      if (cleanEmail) patch.email = cleanEmail;
+
+      const isUuid = typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+      let query = supabase.from('admin_users').update(patch);
+      
+      if (isUuid) {
+        query = query.eq('id', id);
+      } else if (cleanEmail) {
+        query = query.ilike('email', cleanEmail);
+      } else {
+        query = null;
+      }
+
+      if (query) {
+        const { data, error } = await query.select().maybeSingle();
+
+        if (!error && data) {
+          const updated = {
+            ...data,
+            role: normalizedRole,
+            status: data.user_id ? 'ACTIVE' : 'PENDING'
+          };
+          const local = getLocalAdminUsers();
+          setLocalAdminUsers(local.map((a) => (String(a.id) === String(id) || a.email?.toLowerCase() === cleanEmail ? updated : a)));
+          return updated;
+        }
+
+        if (error) {
+          if (error.code === '42501') {
+            throw new Error('Access Denied: You do not have permission to modify administrators.');
+          }
+          if (error.code !== '22P02' && !error.message?.includes('schema')) {
+            throw new Error(error.message || 'Failed to update administrator.');
+          }
+        }
+      }
+    } catch (updateErr) {
+      if (updateErr.message && !updateErr.message.includes('Table') && !updateErr.message.includes('schema') && !updateErr.message.includes('22P02')) {
+        throw updateErr;
+      }
+    }
+  }
+
+  // Local fallback
+  const local = getLocalAdminUsers();
+  const target = local.find((a) => String(a.id) === String(id) || (cleanEmail && a.email?.toLowerCase() === cleanEmail));
+  if (!target) throw new Error('Administrator not found.');
+
+  // Check last superadmin protection
+  if ((target.role === 'superadmin' || target.role === 'super_admin') && normalizedRole === 'admin') {
+    const superAdminCount = local.filter((a) => a.role === 'superadmin' || a.role === 'super_admin').length;
+    if (superAdminCount <= 1) {
+      throw new Error('Cannot demote the last remaining Super Admin. At least one Super Admin must remain.');
+    }
+  }
+
+  const updated = {
+    ...target,
+    role: normalizedRole,
+    full_name: cleanName || target.full_name,
+    email: cleanEmail || target.email,
+    updated_at: new Date().toISOString()
+  };
+  setLocalAdminUsers(local.map((a) => (String(a.id) === String(id) || a.email?.toLowerCase() === target.email?.toLowerCase() ? updated : a)));
+  return updated;
+}
+
+/**
+ * Revoke administrator access
+ */
+export async function removeAdminUser(adminId, currentAdminEmail) {
+  if (!adminId) throw new Error('Invalid administrator ID.');
+
+  const cleanCurrentEmail = (currentAdminEmail || '').trim().toLowerCase();
+  const local = getLocalAdminUsers();
+  const target = local.find((a) => 
+    String(a.id) === String(adminId) || 
+    String(a.user_id) === String(adminId) || 
+    (typeof adminId === 'string' && a.email?.toLowerCase() === adminId.toLowerCase())
+  );
+
+  // Self-revocation check
+  if (cleanCurrentEmail && target?.email?.toLowerCase() === cleanCurrentEmail) {
+    const superAdminCount = local.filter((a) => a.role === 'superadmin' || a.role === 'super_admin').length;
+    if (superAdminCount <= 1 && (target.role === 'superadmin' || target.role === 'super_admin')) {
+      throw new Error('Cannot revoke your own access as the last remaining Super Admin.');
+    }
+  }
+
+  if (isSupabaseConfigured) {
+    // 1. Try secure RPC revoke_admin
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('revoke_admin', {
+        target_admin_id: String(adminId)
+      });
+
+      if (!rpcError && rpcData?.success) {
+        setLocalAdminUsers(local.filter((a) => String(a.id) !== String(adminId) && a.email?.toLowerCase() !== target?.email?.toLowerCase()));
+        return true;
+      }
+
+      if (rpcError) {
+        if (!rpcError.message?.includes('schema cache') && !rpcError.message?.includes('function')) {
+          if (rpcError.message?.includes('last remaining Super Admin')) {
+            throw new Error('Cannot revoke the last remaining Super Admin. At least one Super Admin must remain.');
+          }
+          if (rpcError.message?.includes('Superadmin privileges') || rpcError.code === '42501') {
+            throw new Error('Access Denied: Only a Super Admin can revoke administrators.');
+          }
+          throw new Error(rpcError.message);
+        }
+      }
+    } catch (rpcErr) {
+      if (!rpcErr.message?.includes('schema cache') && !rpcErr.message?.includes('function')) {
+        throw rpcErr;
+      }
+    }
+
+    // 2. Direct table delete fallback
+    try {
+      const isUuid = typeof adminId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(adminId);
+      let query = supabase.from('admin_users').delete();
+      
+      if (isUuid) {
+        query = query.eq('id', adminId);
+      } else if (target?.email) {
+        query = query.ilike('email', target.email);
+      } else {
+        query = null;
+      }
+      
+      if (query) {
+        const { error } = await query;
+        if (error && error.code === '42501') {
+          throw new Error('Access Denied: You do not have permission to revoke administrators.');
+        }
+      }
+    } catch (err) {
+      if (err.message && !err.message.includes('Table') && !err.message.includes('schema') && !err.message.includes('22P02')) {
+        throw err;
+      }
+    }
+  }
+
+  // Local fallback check
+  if (target && (target.role === 'superadmin' || target.role === 'super_admin')) {
+    const superAdminCount = local.filter((a) => a.role === 'superadmin' || a.role === 'super_admin').length;
+    if (superAdminCount <= 1) {
+      throw new Error('Cannot revoke the last remaining Super Admin. At least one Super Admin must remain.');
+    }
+  }
+
+  setLocalAdminUsers(local.filter((a) => String(a.id) !== String(adminId) && a.email?.toLowerCase() !== target?.email?.toLowerCase()));
+  return true;
 }
 
 

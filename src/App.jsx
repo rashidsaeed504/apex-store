@@ -61,6 +61,7 @@ import AdminReturns from './pages/admin/AdminReturns';
 import AdminReviews from './pages/admin/AdminReviews';
 import AdminCustomers from './pages/admin/AdminCustomers';
 import AdminSocialGallery from './pages/admin/AdminSocialGallery';
+import AdminUsers from './pages/admin/AdminUsers';
 
 export default function App() {
   return (
@@ -99,6 +100,7 @@ export default function App() {
                     <Route path="login" element={<Login />} />
                     <Route path="signup" element={<SignUp />} />
                     <Route path="register" element={<SignUp />} />
+                    <Route path="create-account" element={<SignUp />} />
                     <Route path="forgot-password" element={<ForgotPassword />} />
                     <Route path="reset-password" element={<ResetPassword />} />
                     <Route path="auth/callback" element={<AuthCallback />} />
@@ -136,6 +138,8 @@ export default function App() {
                       <Route path="returns" element={<AdminReturns />} />
                       <Route path="reviews" element={<AdminReviews />} />
                       <Route path="customers" element={<AdminCustomers />} />
+                      <Route path="team" element={<AdminUsers />} />
+                      <Route path="users" element={<AdminUsers />} />
                     </Route>
                   </Route>
                 </Routes>

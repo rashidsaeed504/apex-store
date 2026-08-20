@@ -57,8 +57,8 @@ export default function ProductGrid({ products = [], loading = false, columns, c
       animate="show"
       className={`grid ${gridClasses} gap-3 sm:gap-6 ${className}`}
     >
-      {products.map((product) => (
-        <ProductCard key={product.id} product={product} />
+      {products.map((product, index) => (
+        <ProductCard key={product.id} product={product} index={index} />
       ))}
     </motion.div>
   );

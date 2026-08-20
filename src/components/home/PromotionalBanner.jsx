@@ -7,27 +7,28 @@ import {
   Sparkles,
   ExternalLink,
 } from "lucide-react";
-import { fetchBanners } from "../../services/api";
+import { fetchBanners, getInitialHeroSlides } from "../../services/api";
+import { useScrollReveal } from "../../lib/motion/hooks/useScrollReveal";
+import MagneticButton from "../../lib/motion/components/MagneticButton";
 
 export default function PromotionalBanner() {
-  const [banners, setBanners] = useState([]);
+  const [banners, setBanners] = useState(() => getInitialHeroSlides());
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const sectionRef = useScrollReveal({ target: '.banner-card-box', yOffset: 30 });
 
   const touchStartX = useRef(null);
   const touchEndX = useRef(null);
 
   useEffect(() => {
     async function load() {
-      setLoading(true);
       try {
         const data = await fetchBanners(true);
-        setBanners(data || []);
+        if (Array.isArray(data) && data.length > 0) {
+          setBanners(data);
+        }
       } catch (err) {
         console.warn("Failed to load promotional banners:", err);
-      } finally {
-        setLoading(false);
       }
     }
     load();
@@ -83,14 +84,14 @@ export default function PromotionalBanner() {
     touchEndX.current = null;
   };
 
-  if (loading || banners.length === 0) {
+  if (banners.length === 0) {
     return null; // Gracefully hides if no banners exist
   }
 
   const totalBanners = banners.length;
 
   return (
-    <section className="py-6 sm:py-8 lg:py-10 bg-apex-black relative z-10 overflow-hidden">
+    <section ref={sectionRef} className="py-6 sm:py-8 lg:py-10 bg-apex-black relative z-10 overflow-hidden">
       <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Banner Card Container */}
         <div
@@ -99,7 +100,7 @@ export default function PromotionalBanner() {
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          className="relative w-full h-[240px] sm:h-[300px] md:h-[360px] lg:h-[390px] rounded-2xl sm:rounded-3xl border border-white/10 bg-[#080808] overflow-hidden shadow-[0_15px_45px_rgba(0,0,0,0.85)] group select-none"
+          className="banner-card-box relative w-full h-[240px] sm:h-[300px] md:h-[360px] lg:h-[390px] rounded-2xl sm:rounded-3xl border border-white/10 bg-[#080808] overflow-hidden shadow-[0_15px_45px_rgba(0,0,0,0.85)] group select-none"
         >
           {/* Decorative Tech Grid Accent */}
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(220,38,38,0.15),transparent_60%)] pointer-events-none z-[5]" />
@@ -168,7 +169,8 @@ export default function PromotionalBanner() {
                   {banner.button_text && banner.button_url && (
                     <div>
                       {banner.button_url.startsWith("http") ? (
-                        <a
+                        <MagneticButton
+                          as="a"
                           href={banner.button_url}
                           target={
                             banner.open_in_new_tab ? "_blank" : "_self"
@@ -178,17 +180,17 @@ export default function PromotionalBanner() {
                           tabIndex={isActive ? 0 : -1}
                         >
                           {banner.button_text}
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
+                          <ArrowRight size={14} />
+                        </MagneticButton>
                       ) : (
-                        <Link
+                        <MagneticButton
                           to={banner.button_url}
                           className="btn-primary inline-flex items-center justify-center gap-2 px-5 sm:px-7 py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-bold uppercase tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:shadow-[0_0_30px_rgba(220,38,38,0.7)] transition-all cursor-pointer w-fit"
                           tabIndex={isActive ? 0 : -1}
                         >
                           {banner.button_text}
-                          <ArrowRight className="w-4 h-4" />
-                        </Link>
+                          <ArrowRight size={14} />
+                        </MagneticButton>
                       )}
                     </div>
                   )}

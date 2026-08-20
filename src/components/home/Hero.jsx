@@ -22,10 +22,15 @@ import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import {
   fetchHeroSlides,
   invalidateBannersCache,
+  getInitialHeroSlides,
   INITIAL_SEED_HERO_SLIDES,
   INITIAL_SEED_HERO_BANNERS,
 } from "../../services/api";
 import heroProductImg from "../../assets/download.png";
+import { gsap, useGSAP, isReducedMotion } from "../../lib/motion";
+import { useMouseParallax } from "../../lib/motion/hooks/useParallax";
+import MagneticButton from "../../lib/motion/components/MagneticButton";
+import TechBackground from "../../lib/motion/components/TechBackground";
 
 const AUTOPLAY_INTERVAL = 3000; // 3 seconds per slide
 
@@ -63,13 +68,13 @@ const getFeatureIcon = (text) => {
 };
 
 export default function Hero() {
-  const [slides, setSlides] = useState([]);
+  // Synchronous 0ms initial render with seed/cached slides
+  const [slides, setSlides] = useState(() => getInitialHeroSlides());
   const [currentIndex, setCurrentIndex] = useState(0);
   const [prevIndex, setPrevIndex] = useState(null);
   const [direction, setDirection] = useState(1); // 1 = right to left (next), -1 = left to right (prev)
   const [isAnimating, setIsAnimating] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [loading, setLoading] = useState(true);
 
   // Gesture & Timer refs
   const touchStartX = useRef(null);
@@ -78,26 +83,32 @@ export default function Hero() {
   const resumeTimerRef = useRef(null);
   const animTimeoutRef = useRef(null);
 
-  // Load hero slides from Supabase (with real-time sync)
+  // Preload Slide 2 image in the background AFTER Slide 1 is visible
+  useEffect(() => {
+    if (slides.length > 1) {
+      const slide2Img = slides[1]?.desktop_image_url || slides[1]?.image_url;
+      if (slide2Img) {
+        const timer = setTimeout(() => {
+          const preloader = new Image();
+          preloader.src = slide2Img;
+        }, 500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [slides]);
+
+  // Non-blocking background revalidation for live admin banner updates
   useEffect(() => {
     let isMounted = true;
 
     async function loadSlides() {
       try {
         const data = await fetchHeroSlides();
-        if (isMounted) {
-          if (Array.isArray(data) && data.length > 0) {
-            setSlides(data);
-          } else {
-            setSlides(INITIAL_SEED_HERO_SLIDES || INITIAL_SEED_HERO_BANNERS);
-          }
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          setSlides(data);
         }
       } catch (err) {
-        console.warn("Failed to load hero slides:", err);
-        if (isMounted)
-          setSlides(INITIAL_SEED_HERO_SLIDES || INITIAL_SEED_HERO_BANNERS);
-      } finally {
-        if (isMounted) setLoading(false);
+        console.warn("Failed to background refresh hero slides:", err);
       }
     }
 
@@ -135,9 +146,7 @@ export default function Hero() {
             },
           )
           .subscribe();
-      } catch (e) {
-        console.warn("Realtime hero slides subscription warning:", e);
-      }
+      } catch (e) {}
     }
 
     return () => {
@@ -199,7 +208,7 @@ export default function Hero() {
 
   // Autoplay: single setTimeout, re-set on every index change
   useEffect(() => {
-    if (loading || totalSlides <= 1 || isPaused) return;
+    if (totalSlides <= 1 || isPaused) return;
 
     autoplayTimerRef.current = setTimeout(() => {
       nextSlide();
@@ -208,7 +217,7 @@ export default function Hero() {
     return () => {
       if (autoplayTimerRef.current) clearTimeout(autoplayTimerRef.current);
     };
-  }, [currentIndex, isPaused, loading, totalSlides, nextSlide]);
+  }, [currentIndex, isPaused, totalSlides, nextSlide]);
 
   // Touch Swipe Handlers (Mobile)
   const handleTouchStart = (e) => {
@@ -263,56 +272,102 @@ export default function Hero() {
     });
   }, [slides]);
 
+  const heroContainerRef = useRef(null);
+  const heroProductParallaxRef = useMouseParallax({ depth: 8, invert: false });
+
+  // GSAP First-Load Cinematic Entrance Sequence
+  useGSAP(
+    () => {
+      if (isReducedMotion() || !heroContainerRef.current) return;
+
+      const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+
+      tl.fromTo(
+        '.hero-ambient-glow',
+        { opacity: 0, scale: 0.8 },
+        { opacity: 0.35, scale: 1, duration: 1.2, ease: 'power2.out' }
+      )
+        .fromTo(
+          '.hero-badge-el',
+          { opacity: 0, y: 16 },
+          { opacity: 1, y: 0, duration: 0.5 },
+          '-=0.9'
+        )
+        .fromTo(
+          '.hero-title-el',
+          { opacity: 0, y: 28 },
+          { opacity: 1, y: 0, duration: 0.7, ease: 'power4.out' },
+          '-=0.4'
+        )
+        .fromTo(
+          '.hero-desc-el',
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, duration: 0.5 },
+          '-=0.4'
+        )
+        .fromTo(
+          '.hero-cta-el',
+          { opacity: 0, y: 16, scale: 0.96 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.5, stagger: 0.08 },
+          '-=0.3'
+        )
+        .fromTo(
+          '.hero-product-el',
+          { opacity: 0, scale: 0.92, y: 30 },
+          { opacity: 1, scale: 1, y: 0, duration: 0.9, ease: 'power3.out' },
+          '-=0.6'
+        );
+    },
+    { scope: heroContainerRef }
+  );
+
   return (
     <section
-      className="hero-section group/hero relative flex items-center bg-[#050505] overflow-hidden  pt-24 sm:pt-28 md:pt-32 pb-8 sm:pb-12 md:pb-16 select-none min-h-[auto] sm:min-h-[85vh] lg:min-h-[92vh]"
+      ref={heroContainerRef}
+      className="hero-section group/hero relative flex items-center bg-[#050505] overflow-hidden pt-24 sm:pt-28 md:pt-32 pb-8 sm:pb-12 md:pb-16 select-none min-h-[auto] sm:min-h-[85vh] lg:min-h-[92vh]"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Ambient Background Gradient & Mesh */}
+      {/* Ambient Background Gradient, Mesh & Technical SVG Accents */}
+      <TechBackground variant="grid" glowPosition="top-right" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-apex-red/20 via-[#0a0a0a] to-[#050505] pointer-events-none" />
       <div className="absolute inset-0 bg-[radial-gradient(#ffffff08_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none opacity-40" />
 
       {/* Floating Red Atmosphere Accents */}
-      <div className="absolute top-1/4 left-10 w-72 h-72 bg-apex-red/10 blur-[120px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-10 right-10 w-96 h-96 bg-apex-red/15 blur-[150px] rounded-full pointer-events-none" />
+      <div className="hero-ambient-glow absolute top-1/4 left-10 w-72 h-72 bg-apex-red/10 blur-[120px] rounded-full pointer-events-none" />
+      <div className="hero-ambient-glow absolute bottom-10 right-10 w-96 h-96 bg-apex-red/15 blur-[150px] rounded-full pointer-events-none" />
 
       <div className="container max-w-7xl mx-auto px-4 mt-12 sm:px-6 md:px-8 relative z-10 w-full">
-        {loading ? (
-          <div className="w-full h-[450px] bg-[#0a0a0a] border border-white/5 rounded-3xl animate-pulse flex items-center justify-center">
-            <div className="w-12 h-12 rounded-full border-2 border-apex-red border-t-transparent animate-spin" />
-          </div>
-        ) : (
-          <div className="hero-slider group/slider relative w-full">
-            {/* .slides-viewport: responsive height that comfortably holds mobile stacked content and desktop 2-col layout */}
-            <div className="slides-viewport relative min-h-[640px] xs:min-h-[660px] sm:min-h-[520px] md:min-h-[580px] lg:min-h-[620px] overflow-hidden w-full">
-              {parsedSlides.map((slide, index) => {
-                const isCurrent = index === currentIndex;
-                const isPrev = index === prevIndex;
-                if (!isCurrent && !isPrev) return null;
+        <div className="hero-slider group/slider relative w-full">
+          {/* .slides-viewport: responsive height that comfortably holds mobile stacked content and desktop 2-col layout */}
+          <div className="slides-viewport relative min-h-[640px] xs:min-h-[660px] sm:min-h-[520px] md:min-h-[580px] lg:min-h-[620px] overflow-hidden w-full">
+            {parsedSlides.map((slide, index) => {
+              const isCurrent = index === currentIndex;
+              const isPrev = index === prevIndex;
+              if (!isCurrent && !isPrev) return null;
 
-                let animationClass = "";
-                if (isAnimating) {
-                  if (isCurrent) {
-                    animationClass =
-                      direction === 1
-                        ? "hero-slide-in-right"
-                        : "hero-slide-in-left";
-                  } else if (isPrev) {
-                    animationClass =
-                      direction === 1
-                        ? "hero-slide-out-left"
-                        : "hero-slide-out-right";
-                  }
+              let animationClass = "";
+              if (isAnimating) {
+                if (isCurrent) {
+                  animationClass =
+                    direction === 1
+                      ? "hero-slide-in-right"
+                      : "hero-slide-in-left";
+                } else if (isPrev) {
+                  animationClass =
+                    direction === 1
+                      ? "hero-slide-out-left"
+                      : "hero-slide-out-right";
                 }
+              }
 
-                const slideImage =
-                  slide?.desktop_image_url ||
-                  slide?.image_url ||
-                  heroProductImg;
-                const featuresList = slide._parsedFeatures;
+              const slideImage =
+                slide?.desktop_image_url ||
+                slide?.image_url ||
+                heroProductImg;
+              const featuresList = slide._parsedFeatures;
 
                 return (
                   <div
@@ -330,7 +385,7 @@ export default function Hero() {
                       {/* Left Content Column */}
                       <div className="w-full lg:w-1/2 flex flex-col items-start text-left z-10">
                         {/* 1. Eyebrow Badge & Promotional Tag */}
-                        <div className="flex items-center gap-2 mb-2.5 sm:mb-4 flex-wrap justify-start">
+                        <div className="hero-badge-el flex items-center gap-2 mb-2.5 sm:mb-4 flex-wrap justify-start">
                           {slide?.badge && (
                             <div className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1 rounded-full bg-apex-red/10 border border-apex-red/30 backdrop-blur-md shadow-[0_0_12px_rgba(220,38,38,0.25)]">
                               <span className="w-1.5 h-1.5 rounded-full bg-apex-red animate-pulse shrink-0" />
@@ -349,7 +404,7 @@ export default function Hero() {
                         </div>
 
                         {/* 2. Main Headline */}
-                        <h1 className="text-[30px] xs:text-[34px] sm:text-5xl md:text-6xl lg:text-7xl xl:text-[80px] font-black uppercase tracking-tight leading-[1.05] sm:leading-[0.92] mb-3 sm:mb-5 text-white max-w-2xl text-left break-words">
+                        <h1 className="hero-title-el text-[30px] xs:text-[34px] sm:text-5xl md:text-6xl lg:text-7xl xl:text-[80px] font-black uppercase tracking-tight leading-[1.05] sm:leading-[0.92] mb-3 sm:mb-5 text-white max-w-2xl text-left break-words">
                           {slide?.title}{" "}
                           {slide?.highlight_text && (
                             <span className="text-gradient-red drop-shadow-[0_0_35px_rgba(220,38,38,0.4)] block sm:inline">
@@ -360,22 +415,22 @@ export default function Hero() {
 
                         {/* 3. Description */}
                         {slide?.description && (
-                          <p className="text-xs xs:text-sm sm:text-base md:text-lg text-gray-400 max-w-[340px] sm:max-w-md lg:max-w-lg mb-4 sm:mb-6 font-normal leading-relaxed text-left">
+                          <p className="hero-desc-el text-xs xs:text-sm sm:text-base md:text-lg text-gray-400 max-w-[340px] sm:max-w-md lg:max-w-lg mb-4 sm:mb-6 font-normal leading-relaxed text-left">
                             {slide.description}
                           </p>
                         )}
 
                         {/* 4. CTA Buttons */}
-                        <div className="flex flex-row items-center justify-start gap-2.5 sm:gap-4 w-auto mb-4 sm:mb-6 lg:mb-8 flex-wrap">
+                        <div className="hero-cta-el flex flex-row items-center justify-start gap-2.5 sm:gap-4 w-auto mb-4 sm:mb-6 lg:mb-8 flex-wrap">
                           {slide?.primary_button_text && (
-                            <Link
+                            <MagneticButton
                               to={slide.primary_button_link || "/shop"}
-                              className="btn-primary group inline-flex items-center justify-center h-10 sm:h-11 md:h-12 px-4 sm:px-7 py-2 sm:py-3 rounded-xl shadow-[0_0_18px_rgba(220,38,38,0.35)] hover:shadow-[0_0_35px_rgba(220,38,38,0.7)] hover:-translate-y-0.5 transition-all duration-300 text-xs sm:text-sm font-bold tracking-wider uppercase cursor-pointer shrink-0"
+                              className="btn-primary inline-flex items-center justify-center h-10 sm:h-11 md:h-12 px-4 sm:px-7 py-2 sm:py-3 rounded-xl shadow-[0_0_18px_rgba(220,38,38,0.35)] hover:shadow-[0_0_35px_rgba(220,38,38,0.7)] hover:-translate-y-0.5 transition-all duration-300 text-xs sm:text-sm font-bold tracking-wider uppercase cursor-pointer shrink-0"
                               tabIndex={isCurrent ? 0 : -1}
                             >
                               {slide.primary_button_text}
                               <ArrowRight className="ml-1.5 sm:ml-2 w-3.5 h-3.5 sm:w-4 sm:h-4 group-hover:translate-x-1 transition-transform" />
-                            </Link>
+                            </MagneticButton>
                           )}
 
                           {slide?.secondary_button_text && (
@@ -422,11 +477,14 @@ export default function Hero() {
                       </div>
 
                       {/* Right Product Visual Column / Mobile Bottom Visual */}
-                      <div className="w-full lg:w-1/2 relative flex items-center justify-center mt-2 sm:mt-4 lg:mt-0">
+                      <div className="hero-product-el w-full lg:w-1/2 relative flex items-center justify-center mt-2 sm:mt-4 lg:mt-0">
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 sm:w-80 sm:h-80 lg:w-[420px] lg:h-[420px] bg-apex-red/30 blur-[60px] sm:blur-[110px] lg:blur-[135px] rounded-full pointer-events-none" />
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 sm:w-96 sm:h-96 lg:w-[520px] lg:h-[520px] bg-apex-red/10 blur-[80px] sm:blur-[140px] rounded-full pointer-events-none" />
 
-                        <div className="relative z-10 w-full flex items-center justify-center h-[180px] xs:h-[210px] sm:h-[280px] md:h-[380px] lg:h-[480px] xl:h-[500px]">
+                        <div
+                          ref={isCurrent ? heroProductParallaxRef : null}
+                          className="relative z-10 w-full flex items-center justify-center h-[180px] xs:h-[210px] sm:h-[280px] md:h-[380px] lg:h-[480px] xl:h-[500px]"
+                        >
                           <picture className="max-h-full max-w-full flex items-center justify-center">
                             {slide?.mobile_image_url && (
                               <source
@@ -437,10 +495,12 @@ export default function Hero() {
                             <img
                               src={slideImage}
                               alt={slide?.title || "APEX Store Feature"}
+                              fetchPriority={index === 0 ? "high" : "auto"}
                               loading={index === 0 ? "eager" : "lazy"}
+                              decoding={index === 0 ? "sync" : "async"}
                               width={520}
                               height={520}
-                              className="max-h-[180px] xs:max-h-[210px] sm:max-h-[280px] md:max-h-[380px] lg:max-h-[480px] xl:max-h-[500px] w-auto max-w-full object-contain drop-shadow-[0_20px_45px_rgba(0,0,0,0.95)] filter select-none pointer-events-none animate-float"
+                              className="max-h-[180px] xs:max-h-[210px] sm:max-h-[280px] md:max-h-[380px] lg:max-h-[480px] xl:max-h-[500px] w-auto max-w-full object-contain drop-shadow-[0_20px_45px_rgba(0,0,0,0.95)] filter select-none pointer-events-none"
                               onError={(e) => {
                                 e.currentTarget.onerror = null;
                                 e.currentTarget.src = heroProductImg;
@@ -502,7 +562,6 @@ export default function Hero() {
               </div>
             )}
           </div>
-        )}
       </div>
     </section>
   );

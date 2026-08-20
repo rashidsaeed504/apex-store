@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Heart, ShoppingBag, Truck, ShieldCheck } from "lucide-react";
 import { fetchProductBySlug, fetchProducts } from "../services/api";
-import { formatPrice } from "../utils/helpers";
+import { formatPrice, getShortDescription } from "../utils/helpers";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { useToast } from "../context/ToastContext";
@@ -14,6 +14,7 @@ import QuantitySelector from "../components/ui/QuantitySelector";
 import Rating from "../components/ui/Rating";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
+import { triggerCartBadgePop, triggerButtonFeedback } from "../lib/motion/hooks/useCartMotion";
 
 export default function ProductDetail() {
   const { slug } = useParams();
@@ -99,8 +100,10 @@ export default function ProductDetail() {
             "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&h=600&fit=crop",
           ];
 
-  const handleAddToCart = () => {
+  const handleAddToCart = (e) => {
     if (isOutOfStock) return;
+    if (e?.currentTarget) triggerButtonFeedback(e.currentTarget);
+    triggerCartBadgePop();
     if (addToCart) addToCart(product, quantity, true);
     if (success) success(`Added ${quantity > 1 ? `${quantity}x ` : ''}${product.name} to cart`);
   };
@@ -112,13 +115,14 @@ export default function ProductDetail() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="min-h-screen bg-apex-black text-white py-12 px-4 md:px-8 max-w-7xl mx-auto mt-24"
-    >
-      <div className="text-xs sm:text-sm text-gray-400 mb-6 sm:mb-8 flex items-center flex-wrap gap-1 sm:gap-2">
+    <div className="min-h-screen bg-apex-black text-white py-8 sm:py-12 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto mt-20 sm:mt-24 w-full min-w-0 overflow-x-hidden">
+      {/* Breadcrumb */}
+      <motion.div 
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+        className="text-xs sm:text-sm text-gray-400 mb-6 sm:mb-8 flex items-center flex-wrap gap-1 sm:gap-2 w-full min-w-0 max-w-full"
+      >
         <Link
           to="/"
           className="hover:text-white transition-colors whitespace-nowrap"
@@ -133,26 +137,38 @@ export default function ProductDetail() {
           {categoryName}
         </Link>{" "}
         &gt;
-        <span className="text-white truncate max-w-[150px] sm:max-w-none inline-block align-bottom">
+        <span className="text-white break-words inline-block align-bottom max-w-full">
           {product.name}
         </span>
-      </div>
+      </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 mb-12 sm:mb-16">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 mb-12 sm:mb-16 items-start w-full min-w-0 max-w-full">
         {/* Left: Gallery */}
-        <div className="w-full rounded-xl overflow-hidden aspect-[4/5] sm:aspect-[3/4] lg:aspect-[4/5]">
+        <motion.div 
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full min-w-0 max-w-full"
+        >
           <ProductGallery images={productImages} productName={product.name} />
-        </div>
+        </motion.div>
 
         {/* Right: Info */}
-        <div className="flex flex-col">
-          <div className="flex items-start justify-between mb-2">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold">
+        <motion.div 
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.55, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+          className="flex flex-col w-full min-w-0 max-w-full"
+        >
+          <div className="flex items-start justify-between mb-2 w-full min-w-0">
+            <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold break-words whitespace-normal leading-tight text-white w-full max-w-full">
               {product.name}
             </h1>
           </div>
 
-          <div className="flex items-center gap-4 mb-6">
+          <div className="flex items-center flex-wrap gap-2 sm:gap-4 mb-4 sm:mb-6 w-full min-w-0">
             <a 
               href="#customer-reviews" 
               className="group flex items-center gap-2 hover:opacity-80 transition-opacity"
@@ -164,12 +180,12 @@ export default function ProductDetail() {
             </a>
           </div>
 
-          <div className="flex items-baseline gap-4 mb-6">
+          <div className="flex items-baseline flex-wrap gap-3 sm:gap-4 mb-4 sm:mb-6 w-full min-w-0">
             <span className="text-xl sm:text-2xl font-bold text-apex-red">
               {formatPrice(product.price)}
             </span>
             {Number(product.originalPrice) > Number(product.price) && (
-              <span className="text-lg text-gray-500 line-through">
+              <span className="text-base sm:text-lg text-gray-500 line-through">
                 {formatPrice(product.originalPrice)}
               </span>
             )}
@@ -178,19 +194,23 @@ export default function ProductDetail() {
             )}
           </div>
 
-          <p className="text-sm sm:text-base text-gray-400 mb-6 sm:mb-8 leading-relaxed line-clamp-3">
-            {product.description || product.fullDescription}
+          {/* Short Product Summary (2-3 lines max) */}
+          <p className="text-sm sm:text-base text-gray-300/90 mb-6 sm:mb-8 leading-relaxed break-words whitespace-normal w-full max-w-full font-normal line-clamp-3">
+            {product.short_description || product.shortDescription || getShortDescription(product.description || product.fullDescription, 160)}
           </p>
 
           {Array.isArray(product.colors) && product.colors.length > 0 && (
-            <div className="mb-6">
+            <div className="mb-6 w-full min-w-0">
               <h3 className="text-sm font-medium mb-3">
                 Color: <span className="text-gray-300">{selectedColor}</span>
               </h3>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-2.5 sm:gap-3 w-full min-w-0">
                 {product.colors.map((color) => (
-                  <button
+                  <motion.button
                     key={color}
+                    whileHover={{ scale: 1.18 }}
+                    whileTap={{ scale: 0.9 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 17 }}
                     onClick={() => setSelectedColor(color)}
                     className={`w-8 h-8 rounded-full border-2 transition-all cursor-pointer ${
                       selectedColor === color
@@ -209,9 +229,9 @@ export default function ProductDetail() {
             </div>
           )}
 
-          <div className="mb-6 sm:mb-8">
+          <div className="mb-6 sm:mb-8 w-full min-w-0">
             <h3 className="text-sm font-medium mb-3">Quantity:</h3>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center flex-wrap gap-3 sm:gap-4 w-full min-w-0">
               <QuantitySelector
                 quantity={quantity}
                 setQuantity={setQuantity}
@@ -219,7 +239,7 @@ export default function ProductDetail() {
                 max={Math.max(1, Number(product.stock) || 99)}
               />
               <div
-                className={`text-sm font-medium ${product.stock > 10 ? "text-green-500" : "text-orange-500"}`}
+                className={`text-xs sm:text-sm font-medium ${product.stock > 10 ? "text-green-500" : "text-orange-500"}`}
               >
                 {product.stock > 10
                   ? `In Stock (${product.stock} available)`
@@ -228,54 +248,70 @@ export default function ProductDetail() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-8">
-            <Button
-              variant="primary"
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 text-xs sm:text-sm cursor-pointer ${isOutOfStock ? "opacity-50 cursor-not-allowed" : ""}`}
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-8 w-full max-w-full">
+            <motion.button
+              whileHover={!isOutOfStock ? { scale: 1.02, y: -1 } : {}}
+              whileTap={!isOutOfStock ? { scale: 0.98 } : {}}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
+              className={`btn-primary w-full sm:flex-1 py-3.5 sm:py-3 px-4 text-xs sm:text-sm rounded-xl font-bold uppercase tracking-wider flex items-center justify-center gap-2 box-border cursor-pointer ${isOutOfStock ? "opacity-50 cursor-not-allowed" : ""}`}
               onClick={handleAddToCart}
               disabled={isOutOfStock}
             >
-              <ShoppingBag size={20} />{" "}
-              {isOutOfStock ? "OUT OF STOCK" : "ADD TO CART"}
-            </Button>
-            <Button
-              variant="secondary"
-              className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm cursor-pointer ${isOutOfStock ? "opacity-50 cursor-not-allowed" : ""}`}
-              onClick={handleBuyNow}
-              disabled={isOutOfStock}
-            >
-              BUY NOW
-            </Button>
-            <button
-              onClick={() => toggleWishlist && toggleWishlist(product)}
-              className={`p-3 sm:p-4 rounded-xl border flex items-center justify-center transition-colors cursor-pointer ${
-                isWishlisted
-                  ? "border-apex-red text-apex-red bg-apex-red/10"
-                  : "border-white/20 text-white hover:border-white/50"
-              }`}
-              aria-label="Wishlist"
-            >
-              <Heart size={24} fill={isWishlisted ? "currentColor" : "none"} />
-            </button>
+              <ShoppingBag size={18} />
+              <span>{isOutOfStock ? "OUT OF STOCK" : "ADD TO CART"}</span>
+            </motion.button>
+
+            <div className="flex gap-3 w-full sm:flex-1 max-w-full">
+              <motion.button
+                whileHover={!isOutOfStock ? { scale: 1.02, y: -1 } : {}}
+                whileTap={!isOutOfStock ? { scale: 0.98 } : {}}
+                transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                className={`btn-secondary flex-1 py-3.5 sm:py-3 px-4 text-xs sm:text-sm rounded-xl font-bold uppercase tracking-wider box-border cursor-pointer ${isOutOfStock ? "opacity-50 cursor-not-allowed" : ""}`}
+                onClick={handleBuyNow}
+                disabled={isOutOfStock}
+              >
+                BUY NOW
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.06 }}
+                whileTap={{ scale: 0.94 }}
+                transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                onClick={() => toggleWishlist && toggleWishlist(product)}
+                className={`px-4 py-3.5 sm:p-4 rounded-xl border flex items-center justify-center transition-colors shrink-0 cursor-pointer ${
+                  isWishlisted
+                    ? "border-apex-red text-apex-red bg-apex-red/10"
+                    : "border-white/20 text-white hover:border-white/50"
+                }`}
+                aria-label="Wishlist"
+              >
+                <Heart size={20} fill={isWishlisted ? "currentColor" : "none"} />
+              </motion.button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 border-t border-white/10 pt-6 sm:pt-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4 border-t border-white/10 pt-6 sm:pt-8 w-full min-w-0">
             <div className="flex items-center gap-3 text-gray-400">
-              <Truck size={20} className="text-apex-red" />
+              <Truck size={18} className="text-apex-red shrink-0" />
               <span className="text-xs sm:text-sm">
                 Free shipping over PKR 10,000
               </span>
             </div>
             <div className="flex items-center gap-3 text-gray-400">
-              <ShieldCheck size={20} className="text-apex-red" />
+              <ShieldCheck size={18} className="text-apex-red shrink-0" />
               <span className="text-xs sm:text-sm">7-day return policy</span>
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Tabs */}
-      <div className="mb-20">
+      <motion.div 
+        initial={{ opacity: 0, y: 24 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-60px" }}
+        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        className="mb-16 sm:mb-20 w-full min-w-0 max-w-full"
+      >
         <div className="flex overflow-x-auto border-b border-white/10 mb-8 hide-scrollbar">
           {["description", "features", "specifications", "shipping"].map(
             (tab) => (
@@ -300,39 +336,27 @@ export default function ProductDetail() {
           )}
         </div>
 
-        <div className="min-h-[200px] bg-apex-charcoal rounded-xl p-4 sm:p-6 border border-white/5">
+        <div className="bg-apex-charcoal border border-white/5 rounded-2xl p-4 sm:p-6 md:p-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.3 }}
             >
               {activeTab === "description" && (
-                <div className="text-gray-300 leading-relaxed whitespace-pre-line space-y-3">
-                  <p>
-                    {product.description ||
-                      product.fullDescription ||
-                      product.full_description ||
-                      "No detailed description available for this product."}
-                  </p>
+                <div className="prose prose-invert max-w-none text-gray-300 space-y-4">
+                  <div className="whitespace-pre-line leading-relaxed text-sm sm:text-base text-gray-300">
+                    {product.fullDescription || product.full_description || product.description || "No detailed description available for this product."}
+                  </div>
                 </div>
               )}
               {activeTab === "features" && (
                 <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {Array.isArray(product.features) && product.features.length > 0 ? (
+                  {Array.isArray(product.features) &&
+                  product.features.length > 0 ? (
                     product.features.map((feature, idx) => (
-                      <li
-                        key={idx}
-                        className="flex items-center gap-3 text-gray-300"
-                      >
-                        <div className="w-1.5 h-1.5 rounded-full bg-apex-red shrink-0" />
-                        <span>{feature}</span>
-                      </li>
-                    ))
-                  ) : typeof product.features === "string" && product.features.trim() ? (
-                    product.features.split('\n').map((s) => s.trim()).filter(Boolean).map((feature, idx) => (
                       <li
                         key={idx}
                         className="flex items-center gap-3 text-gray-300"
@@ -405,10 +429,17 @@ export default function ProductDetail() {
             </motion.div>
           </AnimatePresence>
         </div>
-      </div>
+      </motion.div>
 
       {/* Customer Reviews Section */}
-      <div id="customer-reviews">
+      <motion.div 
+        id="customer-reviews"
+        initial={{ opacity: 0, y: 24 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-60px" }}
+        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        className="w-full min-w-0 max-w-full mb-12 sm:mb-16"
+      >
         <ProductReviews 
           productId={product.id} 
           productName={product.name} 
@@ -417,18 +448,24 @@ export default function ProductDetail() {
             if (updated) setProduct(updated);
           }}
         />
-      </div>
+      </motion.div>
 
       {/* Related Products */}
       {relatedProducts.length > 0 && (
-        <div className="mt-12">
+        <motion.div 
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="mt-8 sm:mt-12 w-full min-w-0 max-w-full"
+        >
           <ProductCarousel
             products={relatedProducts}
             title="YOU MAY ALSO"
             highlightTitle="LIKE"
           />
-        </div>
+        </motion.div>
       )}
-    </motion.div>
+    </div>
   );
 }

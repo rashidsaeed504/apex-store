@@ -1,8 +1,30 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, ShieldCheck, CheckCircle2, MessageSquare, ThumbsUp, Filter, X, ArrowUpDown, Clock, Lock, AlertCircle, Sparkles, Loader2 } from 'lucide-react';
-import { fetchProductReviews, submitProductReview, checkReviewEligibility } from '../../services/api';
+import { 
+  Star, 
+  ShieldCheck, 
+  CheckCircle2, 
+  MessageSquare, 
+  ThumbsUp, 
+  Filter, 
+  X, 
+  ArrowUpDown, 
+  Clock, 
+  Lock, 
+  AlertCircle, 
+  Sparkles, 
+  Loader2,
+  Camera,
+  Trash2,
+  Save
+} from 'lucide-react';
+import { 
+  fetchProductReviews, 
+  submitProductReview, 
+  checkReviewEligibility,
+  uploadReviewPhoto 
+} from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 
@@ -11,9 +33,13 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [checkingEligibility, setCheckingEligibility] = useState(false);
-  const [eligibilityResult, setEligibilityResult] = useState(null);
+  const [userEligibility, setUserEligibility] = useState(null);
+  const [checkingUserStatus, setCheckingUserStatus] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+
+  const fileInputRef = useRef(null);
 
   const { user, profile } = useAuth();
   const { success, error: toastError } = useToast();
@@ -22,7 +48,9 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
   // Form State
   const [formData, setFormData] = useState({
     rating: 5,
+    title: '',
     reviewText: '',
+    photos: [],
     existingReviewId: null,
   });
   const [hoveredRating, setHoveredRating] = useState(0);
@@ -44,9 +72,49 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
     }
   };
 
+  const checkUserStatus = async () => {
+    if (!user) {
+      setUserEligibility({
+        orderStatus: 'not_logged_in',
+        reason: 'Sign in to review after purchase.',
+      });
+      return;
+    }
+
+    setCheckingUserStatus(true);
+    try {
+      const res = await checkReviewEligibility({
+        productId,
+        productName,
+        user,
+      });
+      setUserEligibility(res);
+    } catch (err) {
+      console.warn('Eligibility check warning:', err);
+    } finally {
+      setCheckingUserStatus(false);
+    }
+  };
+
   useEffect(() => {
     loadReviews();
-  }, [productId]);
+    checkUserStatus();
+
+    const handleUpdate = () => {
+      loadReviews();
+      checkUserStatus();
+    };
+
+    window.addEventListener('apex_reviews_updated', handleUpdate);
+    window.addEventListener('apex_orders_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
+    return () => {
+      window.removeEventListener('apex_reviews_updated', handleUpdate);
+      window.removeEventListener('apex_orders_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, [productId, user]);
 
   // Rating Statistics & Breakdown
   const stats = useMemo(() => {
@@ -107,18 +175,13 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
 
   const handleOpenReviewModal = async () => {
     if (!user) {
-      // Prompt user to sign in
-      setEligibilityResult({
-        eligible: false,
-        requiresAuth: true,
-        reason: 'You must be signed in to your APEX customer account to review a purchased product.',
-      });
-      setIsModalOpen(true);
+      navigate('/login');
       return;
     }
 
     setCheckingEligibility(true);
     setIsModalOpen(true);
+    setHasSubmitted(false);
 
     try {
       const check = await checkReviewEligibility({
@@ -127,43 +190,74 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
         user,
       });
 
-      setEligibilityResult(check);
+      setUserEligibility(check);
 
       if (check.eligible) {
         if (check.existingReview) {
           setFormData({
             rating: Number(check.existingReview.rating || 5),
+            title: check.existingReview.title || '',
             reviewText: check.existingReview.review_text || '',
+            photos: Array.isArray(check.existingReview.photos) ? check.existingReview.photos : [],
             existingReviewId: check.existingReview.id,
           });
         } else {
           setFormData({
             rating: 5,
+            title: '',
             reviewText: '',
+            photos: [],
             existingReviewId: null,
           });
         }
       }
     } catch (err) {
       console.warn('Eligibility check failed:', err);
-      setEligibilityResult({
-        eligible: false,
-        reason: 'Unable to verify purchase history. Please try again.',
-      });
     } finally {
       setCheckingEligibility(false);
     }
+  };
+
+  const handlePhotoUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    if (formData.photos.length + files.length > 5) {
+      toastError('You can upload a maximum of 5 photos.');
+      return;
+    }
+
+    setUploadingPhoto(true);
+    try {
+      const uploadPromises = files.map((file) => uploadReviewPhoto(file));
+      const urls = await Promise.all(uploadPromises);
+      const validUrls = urls.filter(Boolean);
+
+      setFormData((prev) => ({
+        ...prev,
+        photos: [...prev.photos, ...validUrls],
+      }));
+      success(`${validUrls.length} photo(s) attached!`);
+    } catch (err) {
+      console.warn('Photo upload failed:', err);
+      toastError('Failed to upload photo.');
+    } finally {
+      setUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemovePhoto = (idx) => {
+    setFormData((prev) => ({
+      ...prev,
+      photos: prev.photos.filter((_, i) => i !== idx),
+    }));
   };
 
   const handleSubmitReview = async (e) => {
     e.preventDefault();
     if (!formData.reviewText.trim()) {
       toastError('Please enter your review feedback.');
-      return;
-    }
-
-    if (formData.reviewText.trim().length < 5) {
-      toastError('Review text must be at least 5 characters long.');
       return;
     }
 
@@ -175,7 +269,9 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
         customerName: profile?.full_name || user?.user_metadata?.full_name || 'Verified Customer',
         customerEmail: user?.email,
         rating: formData.rating,
+        title: formData.title,
         reviewText: formData.reviewText,
+        photos: formData.photos,
         user,
         existingReviewId: formData.existingReviewId,
       });
@@ -183,6 +279,7 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
       setHasSubmitted(true);
       success('Thank you! Your verified review has been published.');
       await loadReviews();
+      await checkUserStatus();
       if (onReviewsUpdated) onReviewsUpdated();
     } catch (err) {
       toastError(err.message || 'Failed to submit review. Please try again.');
@@ -229,12 +326,48 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
           </p>
         </div>
 
-        <button
-          onClick={handleOpenReviewModal}
-          className="btn-primary inline-flex items-center justify-center px-6 py-3 rounded-full text-xs sm:text-sm font-bold uppercase tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.3)] hover:shadow-[0_0_30px_rgba(220,38,38,0.5)] cursor-pointer self-start sm:self-auto shrink-0"
-        >
-          <MessageSquare className="w-4 h-4 mr-2" /> Write a Review
-        </button>
+        {/* Contextual Action Button based on Purchase & Delivery Status */}
+        {checkingUserStatus ? (
+          <div className="flex items-center gap-2 text-xs text-gray-500 font-mono py-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-apex-red" />
+            <span>Checking verified purchase status...</span>
+          </div>
+        ) : !user ? (
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-gray-300 bg-white/5 hover:bg-white/10 border border-white/10 hover:text-white transition-colors self-start sm:self-auto"
+          >
+            <Lock className="w-3.5 h-3.5 text-gray-400" />
+            <span>Sign in to review after purchase</span>
+          </Link>
+        ) : userEligibility?.orderStatus === 'not_purchased' ? (
+          <div className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-gray-400 bg-[#121212] border border-white/5 self-start sm:self-auto">
+            <ShieldCheck className="w-3.5 h-3.5 text-gray-500" />
+            <span>Purchase this product to leave a verified review</span>
+          </div>
+        ) : userEligibility?.orderStatus === 'in_transit' ? (
+          <div className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 self-start sm:self-auto">
+            <Clock className="w-3.5 h-3.5" />
+            <span>Review available after delivery</span>
+          </div>
+        ) : userEligibility?.isAlreadyReviewed ? (
+          <button
+            type="button"
+            onClick={handleOpenReviewModal}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer shadow-sm self-start sm:self-auto"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>Reviewed • Edit Review</span>
+          </button>
+        ) : userEligibility?.eligible ? (
+          <button
+            type="button"
+            onClick={handleOpenReviewModal}
+            className="btn-primary inline-flex items-center justify-center px-6 py-3 rounded-full text-xs sm:text-sm font-bold uppercase tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.3)] hover:shadow-[0_0_30px_rgba(220,38,38,0.5)] cursor-pointer self-start sm:self-auto shrink-0"
+          >
+            <MessageSquare className="w-4 h-4 mr-2" /> Write a Review
+          </button>
+        ) : null}
       </div>
 
       {/* Ratings Summary Card */}
@@ -370,82 +503,97 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
               ? 'Have you received this item? Be the first verified customer to share your experience!'
               : 'There are no reviews matching this specific star rating filter.'}
           </p>
-          {filterStar === 'all' ? (
+          {userEligibility?.eligible && !userEligibility?.isAlreadyReviewed && (
             <button
               onClick={handleOpenReviewModal}
               className="btn-primary inline-flex items-center px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider cursor-pointer"
             >
               <MessageSquare className="w-4 h-4 mr-2" /> Write Verified Review
             </button>
-          ) : (
-            <button
-              onClick={() => setFilterStar('all')}
-              className="text-apex-red hover:underline text-xs font-bold uppercase cursor-pointer"
-            >
-              Clear Filter
-            </button>
           )}
         </div>
       ) : (
         /* Reviews Cards */
         <div className="space-y-4">
-          {displayedReviews.map((review) => (
-            <motion.div
-              key={review.id}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-[#0a0a0a] border border-white/5 rounded-3xl p-5 sm:p-6 hover:border-white/15 transition-all shadow-xl"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                {/* User & Verified Badge */}
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-apex-red/30 to-amber-500/20 border border-white/10 flex items-center justify-center font-bold text-white text-xs uppercase shrink-0">
-                    {(review.customer_name || 'A')[0]}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-white text-sm">
-                        {review.customer_name}
-                      </span>
-                      {review.verified_purchase && (
-                        <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
-                          <ShieldCheck size={11} className="text-emerald-400" />
-                          Verified Purchase
-                        </span>
-                      )}
+          {displayedReviews.map((review) => {
+            const photos = Array.isArray(review.photos) ? review.photos : [];
+
+            return (
+              <motion.div
+                key={review.id}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-[#0a0a0a] border border-white/5 rounded-3xl p-5 sm:p-6 hover:border-white/15 transition-all shadow-xl"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                  {/* User & Verified Badge */}
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-apex-red/30 to-amber-500/20 border border-white/10 flex items-center justify-center font-bold text-white text-xs uppercase shrink-0">
+                      {(review.customer_name || 'A')[0]}
                     </div>
-                    <span className="text-[11px] text-gray-500 font-mono">
-                      {formatDate(review.created_at)}
-                    </span>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-white text-sm">
+                          {review.customer_name}
+                        </span>
+                        {review.verified_purchase && (
+                          <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                            <ShieldCheck size={11} className="text-emerald-400" />
+                            Verified Purchase
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-gray-500 font-mono">
+                        {formatDate(review.created_at)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Stars */}
+                  <div className="flex items-center gap-1 text-amber-500">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        size={15}
+                        className={
+                          star <= Number(review.rating)
+                            ? 'fill-amber-500 text-amber-500'
+                            : 'text-gray-700'
+                        }
+                      />
+                    ))}
                   </div>
                 </div>
 
-                {/* Stars */}
-                <div className="flex items-center gap-1 text-amber-500">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star
-                      key={star}
-                      size={15}
-                      className={
-                        star <= Number(review.rating)
-                          ? 'fill-amber-500 text-amber-500'
-                          : 'text-gray-700'
-                      }
-                    />
-                  ))}
-                </div>
-              </div>
+                {/* Review Title */}
+                {review.title && (
+                  <h4 className="font-bold text-white text-sm mb-1">
+                    {review.title}
+                  </h4>
+                )}
 
-              {/* Review Text */}
-              <p className="text-gray-300 text-xs sm:text-sm leading-relaxed whitespace-pre-line">
-                {review.review_text}
-              </p>
-            </motion.div>
-          ))}
+                {/* Review Text */}
+                <p className="text-gray-300 text-xs sm:text-sm leading-relaxed whitespace-pre-line">
+                  {review.review_text}
+                </p>
+
+                {/* Attached Photos */}
+                {photos.length > 0 && (
+                  <div className="flex items-center gap-2 pt-3 flex-wrap">
+                    {photos.map((photoUrl, pIdx) => (
+                      <div key={pIdx} className="w-16 h-16 rounded-xl bg-[#1a1a1a] border border-white/10 overflow-hidden shrink-0">
+                        <img src={photoUrl} alt="Review evidence" className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
         </div>
       )}
 
-      {/* Write a Review Modal */}
+      {/* Write / Edit Review Modal */}
       <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -487,21 +635,21 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
                     Verifying purchase delivery...
                   </p>
                 </div>
-              ) : eligibilityResult && !eligibilityResult.eligible ? (
+              ) : userEligibility && !userEligibility.eligible ? (
                 /* Ineligible or Login Prompt State */
                 <div className="py-6 text-center space-y-4">
                   <div className="w-14 h-14 rounded-2xl bg-amber-500/15 text-amber-400 flex items-center justify-center mx-auto border border-amber-500/30">
                     <ShieldCheck className="w-7 h-7" />
                   </div>
                   <h4 className="text-base font-bold text-white uppercase tracking-wider">
-                    {eligibilityResult.requiresAuth ? 'Account Login Required' : 'Verified Buyer Review Policy'}
+                    {userEligibility.requiresAuth ? 'Account Login Required' : 'Verified Buyer Review Policy'}
                   </h4>
                   <p className="text-xs sm:text-sm text-gray-400 max-w-sm mx-auto leading-relaxed">
-                    {eligibilityResult.reason}
+                    {userEligibility.reason}
                   </p>
 
                   <div className="pt-4 flex justify-center gap-3">
-                    {eligibilityResult.requiresAuth ? (
+                    {userEligibility.requiresAuth ? (
                       <Link
                         to="/login"
                         onClick={() => setIsModalOpen(false)}
@@ -529,7 +677,7 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
                     Thank You for Your Review!
                   </h4>
                   <p className="text-xs sm:text-sm text-gray-400 max-w-xs mx-auto leading-relaxed">
-                    Your feedback has been verified and posted to the community.
+                    Your feedback has been verified and posted to the APEX community.
                   </p>
                   <button
                     onClick={() => setIsModalOpen(false)}
@@ -578,6 +726,20 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
                     </div>
                   </div>
 
+                  {/* Review Title */}
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">
+                      Review Title <span className="text-gray-500 font-normal">(Optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      placeholder="e.g. Incredible spatial sound and long battery life"
+                      className="w-full bg-[#161616] border border-white/10 rounded-xl p-3 text-sm text-white focus:border-apex-red outline-none"
+                    />
+                  </div>
+
                   {/* Review Comments */}
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">
@@ -593,6 +755,56 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
                     />
                   </div>
 
+                  {/* Photo Upload Section */}
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
+                      Add Photos <span className="text-gray-500 font-normal">(Optional, max 5)</span>
+                    </label>
+
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {formData.photos.map((photoUrl, idx) => (
+                        <div key={idx} className="relative w-16 h-16 rounded-xl bg-[#161616] border border-white/10 overflow-hidden group">
+                          <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePhoto(idx)}
+                            className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-red-400 transition-opacity cursor-pointer"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))}
+
+                      {formData.photos.length < 5 && (
+                        <div>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={handlePhotoUpload}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            disabled={uploadingPhoto || submitting}
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-16 h-16 rounded-xl bg-[#161616] hover:bg-[#202020] border border-dashed border-white/20 hover:border-apex-red text-gray-400 hover:text-white flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
+                          >
+                            {uploadingPhoto ? (
+                              <Loader2 size={18} className="animate-spin text-apex-red" />
+                            ) : (
+                              <>
+                                <Camera size={18} />
+                                <span className="text-[9px] font-bold uppercase">Add</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="pt-3 border-t border-white/10 flex justify-end gap-3">
                     <button
                       type="button"
@@ -604,7 +816,7 @@ export default function ProductReviews({ productId, productName, onReviewsUpdate
                     </button>
                     <button
                       type="submit"
-                      disabled={submitting}
+                      disabled={submitting || uploadingPhoto}
                       className="btn-primary px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer disabled:opacity-50 flex items-center gap-2"
                     >
                       {submitting ? (

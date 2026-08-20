@@ -154,13 +154,14 @@ export default function Shop() {
         : "SHOP";
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="min-h-screen bg-apex-black text-white py-12 px-4 md:px-8 max-w-7xl mx-auto mt-12"
-    >
-      <div className="mb-8 mt-16">
+    <div className="min-h-screen bg-apex-black text-white py-12 px-4 md:px-8 max-w-7xl mx-auto mt-12">
+      <motion.div 
+        initial={{ opacity: 0, y: 24 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-60px" }}
+        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        className="mb-8 mt-16"
+      >
         <div className="text-xs sm:text-sm text-gray-400 mb-4">
           Home &gt; <span className="text-white">Shop</span>{" "}
           {activeCategoryTitle !== "SHOP" && (
@@ -179,29 +180,38 @@ export default function Shop() {
             products
           </div>
         </div>
-      </div>
+      </motion.div>
 
       <div className="flex flex-col md:flex-row gap-8">
         {/* Mobile Filter Button */}
         <div className="md:hidden">
-          <button
+          <motion.button
+            whileHover={{ scale: 1.04, y: -2 }}
+            whileTap={{ scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 400, damping: 17 }}
             onClick={() => setIsMobileFilterOpen(true)}
-            className="flex items-center gap-2 w-full justify-center bg-apex-charcoal border border-white/10 rounded-lg py-2.5 text-xs sm:text-sm font-medium hover:bg-apex-dark transition-colors"
+            className="flex items-center gap-2 w-full justify-center bg-apex-charcoal border border-white/10 rounded-lg py-2.5 text-xs sm:text-sm font-medium hover:bg-apex-dark transition-colors cursor-pointer"
           >
             <Filter size={18} />
             Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
-          </button>
+          </motion.button>
         </div>
 
         {/* Desktop Sidebar */}
-        <div className="hidden md:block w-64 flex-shrink-0">
+        <motion.div 
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="hidden md:block w-64 flex-shrink-0"
+        >
           <FilterSidebar
             filters={filters}
             onFilterChange={handleFilterChange}
             onReset={handleResetFilters}
             activeFilterCount={activeFilterCount}
           />
-        </div>
+        </motion.div>
 
         {/* Mobile Sidebar Overlay */}
         <AnimatePresence>
@@ -223,12 +233,15 @@ export default function Shop() {
               >
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-xl font-bold">Filters</h2>
-                  <button
+                  <motion.button
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.92 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 17 }}
                     onClick={() => setIsMobileFilterOpen(false)}
-                    className="p-2 hover:bg-white/5 rounded-full transition-colors"
+                    className="p-2 hover:bg-white/5 rounded-full transition-colors cursor-pointer"
                   >
                     <X size={20} />
-                  </button>
+                  </motion.button>
                 </div>
                 <FilterSidebar
                   filters={filters}
@@ -243,7 +256,13 @@ export default function Shop() {
 
         {/* Product Grid */}
         <div className="flex-1 flex flex-col gap-6">
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between bg-apex-charcoal border border-white/5 p-3 sm:p-4 rounded-xl">
+          <motion.div 
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-60px" }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+            className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between bg-apex-charcoal border border-white/5 p-3 sm:p-4 rounded-xl"
+          >
             <input
               type="text"
               placeholder="Search products..."
@@ -258,7 +277,7 @@ export default function Shop() {
               <select
                 value={filters.sortBy}
                 onChange={(e) => handleFilterChange("sortBy", e.target.value)}
-                className="bg-apex-dark border border-white/10 rounded-lg px-3 py-2 text-sm focus:border-apex-red focus:outline-none w-full sm:w-auto"
+                className="bg-apex-dark border border-white/10 rounded-lg px-3 py-2 text-sm focus:border-apex-red focus:outline-none w-full sm:w-auto cursor-pointer"
               >
                 <option value="newest">Newest</option>
                 <option value="price-low">Price: Low to High</option>
@@ -266,39 +285,57 @@ export default function Shop() {
                 <option value="rating">Top Rated</option>
               </select>
             </div>
-          </div>
+          </motion.div>
 
           {loading ? (
             <ProductGrid loading={true} />
           ) : filteredProducts.length === 0 ? (
-            <div className="text-center py-20 bg-apex-charcoal rounded-xl border border-white/5">
+            <motion.div 
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+              className="text-center py-20 bg-apex-charcoal rounded-xl border border-white/5"
+            >
               <h3 className="text-xl font-bold mb-2">No products found</h3>
               <p className="text-gray-400 mb-6">
                 Try adjusting your filters or search query.
               </p>
-              <button
+              <motion.button
+                whileHover={{ scale: 1.04, y: -2 }}
+                whileTap={{ scale: 0.96 }}
+                transition={{ type: "spring", stiffness: 400, damping: 17 }}
                 onClick={handleResetFilters}
-                className="text-apex-red hover:text-white transition-colors underline font-semibold"
+                className="text-apex-red hover:text-white transition-colors underline font-semibold cursor-pointer"
               >
                 Reset all filters
-              </button>
-            </div>
+              </motion.button>
+            </motion.div>
           ) : (
             <ProductGrid products={displayedProducts} />
           )}
 
           {visibleCount < filteredProducts.length && (
-            <div className="flex justify-center mt-8">
-              <button
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+              className="flex justify-center mt-8"
+            >
+              <motion.button
+                whileHover={{ scale: 1.04, y: -2 }}
+                whileTap={{ scale: 0.96 }}
+                transition={{ type: "spring", stiffness: 400, damping: 17 }}
                 onClick={() => setVisibleCount((prev) => prev + 8)}
-                className="px-6 py-2.5 rounded-full border border-white/20 hover:bg-white/5 transition-colors font-medium text-xs sm:text-sm"
+                className="px-6 py-2.5 rounded-full border border-white/20 hover:bg-white/5 transition-colors font-medium text-xs sm:text-sm cursor-pointer"
               >
                 Load More
-              </button>
-            </div>
+              </motion.button>
+            </motion.div>
           )}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

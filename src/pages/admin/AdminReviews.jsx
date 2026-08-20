@@ -56,6 +56,15 @@ export default function AdminReviews() {
 
   useEffect(() => {
     loadData();
+
+    const handleUpdate = () => loadData();
+    window.addEventListener('apex_reviews_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
+    return () => {
+      window.removeEventListener('apex_reviews_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, []);
 
   // Stats calculation
@@ -358,6 +367,11 @@ export default function AdminReviews() {
                         <div className="space-y-0.5">
                           <p className="font-bold text-white text-xs sm:text-sm">{review.customer_name}</p>
                           <p className="text-[11px] text-gray-400 font-mono">{review.customer_email}</p>
+                          {review.order_id && (
+                            <p className="text-[10px] text-gray-400 font-mono">
+                              Order: <strong className="text-white font-mono">{review.order_id}</strong>
+                            </p>
+                          )}
                           {review.verified_purchase ? (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                               <ShieldCheck size={10} /> Verified Purchase
@@ -382,11 +396,27 @@ export default function AdminReviews() {
                         </div>
                       </td>
 
-                      {/* Review Text */}
+                      {/* Review Details (Title, Text & Photos) */}
                       <td className="py-4 px-6 max-w-sm">
-                        <p className="text-xs text-gray-300 line-clamp-3 leading-relaxed whitespace-pre-line">
-                          {review.review_text}
-                        </p>
+                        <div className="space-y-1">
+                          {review.title && (
+                            <h5 className="font-bold text-white text-xs leading-tight">
+                              {review.title}
+                            </h5>
+                          )}
+                          <p className="text-xs text-gray-300 line-clamp-3 leading-relaxed whitespace-pre-line">
+                            {review.review_text}
+                          </p>
+                          {Array.isArray(review.photos) && review.photos.length > 0 && (
+                            <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                              {review.photos.map((pUrl, pI) => (
+                                <div key={pI} className="w-8 h-8 rounded-lg bg-black border border-white/10 overflow-hidden shrink-0">
+                                  <img src={pUrl} alt="Review pic" className="w-full h-full object-cover" />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       {/* Status */}

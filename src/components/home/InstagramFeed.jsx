@@ -6,10 +6,12 @@ import {
   INITIAL_SEED_SOCIAL_GALLERY 
 } from "../../services/api";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { useScrollReveal } from "../../lib/motion/hooks/useScrollReveal";
 
 const InstagramFeed = () => {
   const [galleryItems, setGalleryItems] = useState(INITIAL_SEED_SOCIAL_GALLERY);
   const [loading, setLoading] = useState(true);
+  const sectionRef = useScrollReveal({ target: '.social-grid-card', yOffset: 24, stagger: 0.05 });
 
   useEffect(() => {
     let isMounted = true;
@@ -76,7 +78,7 @@ const InstagramFeed = () => {
   const items = galleryItems.length > 0 ? galleryItems : INITIAL_SEED_SOCIAL_GALLERY;
 
   return (
-    <section className="py-12 sm:py-16 bg-[#050505] relative z-10 border-t border-white/5 overflow-hidden select-none">
+    <section ref={sectionRef} className="py-12 sm:py-16 bg-[#050505] relative z-10 border-t border-white/5 overflow-hidden select-none">
       <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="flex items-center justify-between mb-6">
@@ -121,7 +123,7 @@ const InstagramFeed = () => {
                 <CardWrapper
                   key={`mobile-social-${item.id || index}`}
                   {...wrapperProps}
-                  className="shrink-0 w-36 sm:w-44 relative group rounded-2xl overflow-hidden aspect-square border border-white/10 block bg-[#0a0a0a] active:scale-95 transition-transform"
+                  className="social-grid-card shrink-0 w-36 sm:w-44 relative group rounded-2xl overflow-hidden aspect-square border border-white/10 block bg-[#0a0a0a] active:scale-95 transition-transform"
                 >
                   <img
                     src={item.image_url}
@@ -169,7 +171,7 @@ const InstagramFeed = () => {
               <CardWrapper
                 key={`desktop-social-${item.id || index}`}
                 {...wrapperProps}
-                className="relative group rounded-2xl overflow-hidden aspect-square border border-white/10 hover:border-apex-red/60 hover:shadow-[0_0_25px_rgba(220,38,38,0.3)] transition-all duration-300 block bg-[#0a0a0a] cursor-pointer"
+                className="social-grid-card relative group rounded-2xl overflow-hidden aspect-square border border-white/10 hover:border-apex-red/60 hover:shadow-[0_0_25px_rgba(220,38,38,0.3)] transition-all duration-300 block bg-[#0a0a0a] cursor-pointer"
               >
                 <img
                   src={item.image_url}

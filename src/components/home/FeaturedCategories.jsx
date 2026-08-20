@@ -3,10 +3,12 @@ import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight, ArrowUpRight } from "lucide-react";
 import { fetchCategories } from "../../services/api";
 import SectionHeader from "./SectionHeader";
+import { useScrollReveal } from "../../lib/motion/hooks/useScrollReveal";
 
 const FeaturedCategories = () => {
   const [categoriesList, setCategoriesList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const sectionRef = useScrollReveal({ target: '.category-card-item', yOffset: 24, stagger: 0.06 });
 
   // Desktop / Tablet Scroll State
   const desktopScrollRef = useRef(null);
@@ -126,7 +128,7 @@ const FeaturedCategories = () => {
   };
 
   return (
-    <section className="py-10 sm:py-16 md:py-20 bg-[#050505] relative z-10 border-t border-white/5">
+    <section ref={sectionRef} className="py-10 sm:py-16 md:py-20 bg-[#050505] relative z-10 border-t border-white/5">
       <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <SectionHeader
           title="TOP"
@@ -188,7 +190,7 @@ const FeaturedCategories = () => {
                           <Link
                             key={category.id || slug || catIndex}
                             to={`/category/${slug}`}
-                            className="group relative h-[180px] w-full rounded-2xl overflow-hidden bg-[#0a0a0a] border border-white/10 active:border-apex-red/60 active:scale-[0.98] transition-all duration-200 block shadow-lg"
+                            className="category-card-item group relative h-[180px] w-full rounded-2xl overflow-hidden bg-[#0a0a0a] border border-white/10 active:border-apex-red/60 active:scale-[0.98] transition-all duration-200 block shadow-lg"
                           >
                             {/* Full Card Background Image */}
                             <img
@@ -218,6 +220,9 @@ const FeaturedCategories = () => {
                                 {subtitle}
                               </p>
                             </div>
+
+                            {/* Bottom Red Accent Line on Hover */}
+                            <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-apex-red scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" />
                           </Link>
                         );
                       })}
@@ -298,7 +303,7 @@ const FeaturedCategories = () => {
                   return (
                     <div
                       key={category.id || slug || index}
-                      className="category-carousel-card flex-shrink-0 snap-start"
+                      className="category-carousel-card category-card-item flex-shrink-0 snap-start"
                     >
                       <Link
                         to={`/category/${slug}`}
@@ -332,6 +337,9 @@ const FeaturedCategories = () => {
                             {subtitle}
                           </p>
                         </div>
+
+                        {/* Bottom Red Accent Line on Hover */}
+                        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-apex-red scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" />
                       </Link>
                     </div>
                   );

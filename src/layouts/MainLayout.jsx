@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Lenis from 'lenis';
+import { gsap, ScrollTrigger } from '../lib/motion';
+import PageTransition from '../lib/motion/components/PageTransition';
 import Navbar from '../components/layout/Navbar';
 import Footer from '../components/layout/Footer';
 import CartDrawer from '../components/layout/CartDrawer';
@@ -52,7 +54,7 @@ export default function MainLayout() {
   const location = useLocation();
   const lenisRef = useRef(null);
 
-  // Initialize Lenis Smooth Inertia Scrolling
+  // Initialize Lenis Smooth Inertia Scrolling & GSAP ScrollTrigger Synchronization
   useEffect(() => {
     // Respect prefers-reduced-motion
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -71,35 +73,41 @@ export default function MainLayout() {
 
     lenisRef.current = lenis;
 
-    let animationFrameId;
-    function raf(time) {
-      lenis.raf(time);
-      animationFrameId = requestAnimationFrame(raf);
-    }
-    animationFrameId = requestAnimationFrame(raf);
+    // Sync Lenis with GSAP ScrollTrigger
+    lenis.on('scroll', ScrollTrigger.update);
+
+    const updateTicker = (time) => {
+      lenis.raf(time * 1000);
+    };
+
+    gsap.ticker.add(updateTicker);
+    gsap.ticker.lagSmoothing(0);
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      gsap.ticker.remove(updateTicker);
       lenis.destroy();
       lenisRef.current = null;
     };
   }, []);
 
-  // Scroll to top on route change smoothly and immediately
+  // Scroll to top on route change smoothly and refresh ScrollTrigger
   useEffect(() => {
     if (lenisRef.current) {
       lenisRef.current.scrollTo(0, { immediate: true });
     } else {
       window.scrollTo(0, 0);
     }
+    ScrollTrigger.refresh();
   }, [location.pathname]);
 
   return (
     <div className="min-h-screen flex flex-col bg-apex-black text-white selection:bg-apex-red/30">
       <Navbar openCart={openCart} />
       
-      <main className="flex-1">
-        <Outlet />
+      <main className="flex-1 w-full min-w-0 overflow-x-hidden">
+        <PageTransition>
+          <Outlet />
+        </PageTransition>
       </main>
       
       <Footer />

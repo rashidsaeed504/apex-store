@@ -3,7 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Package, Truck, CheckCircle2, Clock, ExternalLink, Star, Search, RefreshCw, AlertCircle, RotateCcw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { fetchMyOrders, fetchCustomerReturns, fetchReturnSettings, checkOrderItemReturnEligibility } from '../../services/api';
+import { 
+  fetchMyOrders, 
+  fetchCustomerReturns, 
+  fetchReturnSettings, 
+  checkOrderItemReturnEligibility,
+  fetchCustomerReviews 
+} from '../../services/api';
 import { formatPrice, safeParseItems } from '../../utils/helpers';
 import { useToast } from '../../context/ToastContext';
 import ReturnRequestModal from '../../components/returns/ReturnRequestModal';
@@ -13,6 +19,7 @@ export default function AccountOrders() {
   const { error: toastError } = useToast();
   const [orders, setOrders] = useState([]);
   const [returns, setReturns] = useState([]);
+  const [reviews, setReviews] = useState([]);
   const [returnSettings, setReturnSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('all');
@@ -23,14 +30,16 @@ export default function AccountOrders() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [ordersData, returnsData, settingsData] = await Promise.all([
+      const [ordersData, returnsData, settingsData, reviewsData] = await Promise.all([
         fetchMyOrders(),
         fetchCustomerReturns(),
         fetchReturnSettings(),
+        user ? fetchCustomerReviews(user.id, user.email) : Promise.resolve([]),
       ]);
       setOrders(ordersData || []);
       setReturns(returnsData || []);
       setReturnSettings(settingsData);
+      setReviews(reviewsData || []);
     } catch (err) {
       console.warn('Failed to load orders:', err);
       if (toastError) toastError('Failed to fetch your orders. Please refresh.');
@@ -47,8 +56,14 @@ export default function AccountOrders() {
 
     const handleUpdate = () => loadData();
     window.addEventListener('apex_returns_updated', handleUpdate);
-    return () => window.removeEventListener('apex_returns_updated', handleUpdate);
-  }, []);
+    window.addEventListener('apex_reviews_updated', handleUpdate);
+    window.addEventListener('apex_orders_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('apex_returns_updated', handleUpdate);
+      window.removeEventListener('apex_reviews_updated', handleUpdate);
+      window.removeEventListener('apex_orders_updated', handleUpdate);
+    };
+  }, [user]);
 
   const filteredOrders = (Array.isArray(orders) ? orders : []).filter((o) => {
     if (!o) return false;
@@ -243,10 +258,33 @@ export default function AccountOrders() {
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/5">
+                        <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/5 flex-wrap">
                           <div className="font-mono font-bold text-xs sm:text-sm text-white shrink-0">
                             {formatPrice((item.price || 0) * (item.quantity || 1))}
                           </div>
+
+                          {/* Review Action on Delivered Items */}
+                          {isDelivered && (
+                            <div className="shrink-0">
+                              {reviews.some((r) => Number(r.product_id) === Number(item.id || item.product_id) || (r.product_name && (r.product_name || '').toLowerCase().trim() === (item.name || '').toLowerCase().trim())) ? (
+                                <Link
+                                  to="/account/reviews"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-[11px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors"
+                                >
+                                  <Star className="w-3 h-3 fill-emerald-400" />
+                                  <span>Reviewed</span>
+                                </Link>
+                              ) : (
+                                <Link
+                                  to="/account/reviews"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-amber-500/15 hover:bg-amber-500 text-amber-400 hover:text-white border border-amber-500/30 transition-all cursor-pointer shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                                >
+                                  <Star className="w-3 h-3 fill-current" />
+                                  <span>Write Review</span>
+                                </Link>
+                              )}
+                            </div>
+                          )}
 
                           {/* Return / Exchange Button on Delivered Items */}
                           {isDelivered && (

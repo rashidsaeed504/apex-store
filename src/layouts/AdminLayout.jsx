@@ -15,6 +15,7 @@ import {
   Menu, 
   X,
   RotateCcw,
+  ShieldCheck,
 } from 'lucide-react';
 import Logo from '../components/ui/Logo';
 import { InstagramIcon } from '../components/ui/SocialIcons';
@@ -40,6 +41,7 @@ export default function AdminLayout() {
     { name: 'Returns', path: '/admin/returns', icon: RotateCcw },
     { name: 'Reviews', path: '/admin/reviews', icon: Star },
     { name: 'Customers', path: '/admin/customers', icon: Users },
+    { name: 'Admin Team', path: '/admin/team', icon: ShieldCheck },
   ];
 
   useEffect(() => {
@@ -63,7 +65,7 @@ export default function AdminLayout() {
     } catch (e) {
       console.warn('Sign out error:', e);
     }
-    navigate('/admin/login', { replace: true });
+    navigate('/login', { replace: true, state: { from: '/admin' } });
   };
 
   return (

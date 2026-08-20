@@ -1,8 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, ShieldCheck, MessageSquare, Edit2, CheckCircle2, Package, Sparkles, X, Save, AlertCircle } from 'lucide-react';
+import { 
+  Star, 
+  ShieldCheck, 
+  MessageSquare, 
+  Edit2, 
+  CheckCircle2, 
+  Package, 
+  Sparkles, 
+  X, 
+  Save, 
+  AlertCircle, 
+  Camera, 
+  Image as ImageIcon,
+  Loader2,
+  Trash2
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { fetchCustomerReviews, fetchEligibleUnreviewedItems, submitProductReview } from '../../services/api';
+import { 
+  fetchCustomerReviews, 
+  fetchEligibleUnreviewedItems, 
+  submitProductReview, 
+  uploadReviewPhoto 
+} from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import { formatPrice } from '../../utils/helpers';
 
@@ -17,12 +37,17 @@ export default function AccountReviews() {
   const [activeTab, setActiveTab] = useState('written'); // 'written' | 'pending'
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const fileInputRef = useRef(null);
 
   const [modalForm, setModalForm] = useState({
     productId: null,
     productName: '',
     rating: 5,
+    title: '',
     reviewText: '',
+    photos: [],
     existingReviewId: null,
   });
 
@@ -48,6 +73,17 @@ export default function AccountReviews() {
   useEffect(() => {
     document.title = "My Product Reviews | APEX Store";
     loadReviewData();
+
+    const handleUpdate = () => loadReviewData();
+    window.addEventListener('apex_reviews_updated', handleUpdate);
+    window.addEventListener('apex_orders_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
+    return () => {
+      window.removeEventListener('apex_reviews_updated', handleUpdate);
+      window.removeEventListener('apex_orders_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, [user]);
 
   const handleOpenWriteModal = (item) => {
@@ -55,7 +91,9 @@ export default function AccountReviews() {
       productId: item.productId,
       productName: item.productName,
       rating: 5,
+      title: '',
       reviewText: '',
+      photos: [],
       existingReviewId: null,
     });
     setHoveredRating(0);
@@ -67,17 +105,55 @@ export default function AccountReviews() {
       productId: review.product_id,
       productName: review.product_name,
       rating: Number(review.rating || 5),
+      title: review.title || '',
       reviewText: review.review_text || '',
+      photos: Array.isArray(review.photos) ? review.photos : [],
       existingReviewId: review.id,
     });
     setHoveredRating(0);
     setIsModalOpen(true);
   };
 
+  const handlePhotoUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    if (modalForm.photos.length + files.length > 5) {
+      toastError('You can upload a maximum of 5 photos per review.');
+      return;
+    }
+
+    setUploadingPhoto(true);
+    try {
+      const uploadPromises = files.map((file) => uploadReviewPhoto(file));
+      const uploadedUrls = await Promise.all(uploadPromises);
+      const validUrls = uploadedUrls.filter(Boolean);
+
+      setModalForm((prev) => ({
+        ...prev,
+        photos: [...prev.photos, ...validUrls],
+      }));
+      success(`${validUrls.length} photo(s) attached!`);
+    } catch (err) {
+      console.warn('Photo upload failed:', err);
+      toastError('Failed to upload photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemovePhoto = (indexToRemove) => {
+    setModalForm((prev) => ({
+      ...prev,
+      photos: prev.photos.filter((_, idx) => idx !== indexToRemove),
+    }));
+  };
+
   const handleSubmitReview = async (e) => {
     e.preventDefault();
     if (!modalForm.reviewText.trim()) {
-      toastError('Please enter your review comments.');
+      toastError('Please enter your review feedback.');
       return;
     }
 
@@ -89,7 +165,9 @@ export default function AccountReviews() {
         customerName: profile?.full_name || user?.user_metadata?.full_name || 'Verified Customer',
         customerEmail: user?.email,
         rating: modalForm.rating,
+        title: modalForm.title,
         reviewText: modalForm.reviewText,
+        photos: modalForm.photos,
         user,
         existingReviewId: modalForm.existingReviewId,
       });
@@ -124,7 +202,7 @@ export default function AccountReviews() {
                 PRODUCT <span className="text-apex-red">REVIEWS</span>
               </h2>
               <p className="text-[11px] sm:text-xs text-gray-400 mt-0.5">
-                Manage your feedback and share verified insights on delivered gear.
+                Manage your verified feedback and share insights on delivered gear.
               </p>
             </div>
           </div>
@@ -195,6 +273,8 @@ export default function AccountReviews() {
                   })
                 : 'Recently';
 
+              const photos = Array.isArray(review.photos) ? review.photos : [];
+
               return (
                 <motion.div
                   key={review.id}
@@ -237,9 +317,26 @@ export default function AccountReviews() {
                     </div>
                   </div>
 
+                  {review.title && (
+                    <h5 className="font-bold text-white text-sm">
+                      {review.title}
+                    </h5>
+                  )}
+
                   <p className="text-xs sm:text-sm text-gray-300 leading-relaxed whitespace-pre-line">
                     {review.review_text}
                   </p>
+
+                  {/* Customer Review Photos */}
+                  {photos.length > 0 && (
+                    <div className="flex items-center gap-2 pt-2 flex-wrap">
+                      {photos.map((url, pIdx) => (
+                        <div key={pIdx} className="w-16 h-16 rounded-xl bg-[#1a1a1a] border border-white/10 overflow-hidden shrink-0">
+                          <img src={url} alt="Review attachment" className="w-full h-full object-cover" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="pt-2 flex items-center justify-between">
                     <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
@@ -268,42 +365,52 @@ export default function AccountReviews() {
               </p>
             </div>
           ) : (
-            unreviewedItems.map((item) => (
-              <div
-                key={item.productId}
-                className="bg-[#0a0a0a] border border-white/10 hover:border-white/20 rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all shadow-xl"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-[#141414] border border-white/10 flex items-center justify-center text-apex-red font-bold shrink-0 overflow-hidden">
-                    {item.productImage ? (
-                      <img src={item.productImage} alt={item.productName} className="w-full h-full object-cover" />
-                    ) : (
-                      <Package className="w-6 h-6 text-gray-500" />
-                    )}
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-white text-sm sm:text-base">
-                      {item.productName}
-                    </h4>
-                    <p className="text-xs text-gray-400">
-                      Delivered under Order <span className="font-mono text-white font-bold">#{item.orderNumber}</span>
-                    </p>
-                    {item.price && (
-                      <p className="text-xs text-apex-red font-mono font-bold mt-0.5">
-                        {formatPrice(item.price)}
-                      </p>
-                    )}
-                  </div>
-                </div>
+            unreviewedItems.map((item) => {
+              const deliveredDateStr = item.deliveredAt
+                ? new Date(item.deliveredAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })
+                : 'Delivered';
 
-                <button
-                  onClick={() => handleOpenWriteModal(item)}
-                  className="btn-primary inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.3)] cursor-pointer self-start sm:self-auto shrink-0"
+              return (
+                <div
+                  key={`${item.orderNumber}-${item.productId}`}
+                  className="bg-[#0a0a0a] border border-white/10 hover:border-white/20 rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all shadow-xl"
                 >
-                  <Star className="w-3.5 h-3.5 fill-current" /> Write Review
-                </button>
-              </div>
-            ))
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-[#141414] border border-white/10 flex items-center justify-center text-apex-red font-bold shrink-0 overflow-hidden">
+                      {item.productImage ? (
+                        <img src={item.productImage} alt={item.productName} className="w-full h-full object-cover" />
+                      ) : (
+                        <Package className="w-6 h-6 text-gray-500" />
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white text-sm sm:text-base">
+                        {item.productName}
+                      </h4>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Order <span className="font-mono text-white font-bold">{item.orderNumber}</span> • Delivered on <span className="text-gray-300">{deliveredDateStr}</span> • Qty: <span className="text-white font-bold">{item.quantity}</span>
+                      </p>
+                      {item.price && (
+                        <p className="text-xs text-apex-red font-mono font-bold mt-0.5">
+                          {formatPrice(item.price)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleOpenWriteModal(item)}
+                    className="btn-primary inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.3)] cursor-pointer self-start sm:self-auto shrink-0"
+                  >
+                    <Star className="w-3.5 h-3.5 fill-current" /> Write Review
+                  </button>
+                </div>
+              );
+            })
           )}
         </div>
       )}
@@ -321,7 +428,7 @@ export default function AccountReviews() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-lg bg-[#0e0e0e] border border-white/10 rounded-3xl p-6 sm:p-8 z-10 text-left space-y-4 shadow-2xl"
+              className="relative w-full max-w-lg bg-[#0e0e0e] border border-white/10 rounded-3xl p-6 sm:p-8 z-10 text-left space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between pb-3 border-b border-white/10">
                 <div>
@@ -373,6 +480,20 @@ export default function AccountReviews() {
                   </div>
                 </div>
 
+                {/* Review Headline / Title */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    Review Title <span className="text-gray-500 font-normal">(Optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={modalForm.title}
+                    onChange={(e) => setModalForm({ ...modalForm, title: e.target.value })}
+                    placeholder="e.g. Exceptional bass and crystal clear audio"
+                    className="w-full bg-[#161616] border border-white/10 rounded-xl p-3 text-sm text-white focus:border-apex-red outline-none"
+                  />
+                </div>
+
                 {/* Review Text */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
@@ -383,9 +504,59 @@ export default function AccountReviews() {
                     required
                     value={modalForm.reviewText}
                     onChange={(e) => setModalForm({ ...modalForm, reviewText: e.target.value })}
-                    placeholder="Describe build quality, acoustics, performance, comfort, or value..."
+                    placeholder="Describe build quality, acoustics, performance, comfort, battery life, or overall value..."
                     className="w-full bg-[#161616] border border-white/10 rounded-xl p-3 text-sm text-white focus:border-apex-red outline-none resize-y"
                   />
+                </div>
+
+                {/* Photo Upload Section */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
+                    Add Photos <span className="text-gray-500 font-normal">(Optional, max 5)</span>
+                  </label>
+
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {modalForm.photos.map((photoUrl, idx) => (
+                      <div key={idx} className="relative w-16 h-16 rounded-xl bg-[#161616] border border-white/10 overflow-hidden group">
+                        <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePhoto(idx)}
+                          className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-red-400 transition-opacity cursor-pointer"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+
+                    {modalForm.photos.length < 5 && (
+                      <div>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handlePhotoUpload}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          disabled={uploadingPhoto || submitting}
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-16 h-16 rounded-xl bg-[#161616] hover:bg-[#202020] border border-dashed border-white/20 hover:border-apex-red text-gray-400 hover:text-white flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
+                        >
+                          {uploadingPhoto ? (
+                            <Loader2 size={18} className="animate-spin text-apex-red" />
+                          ) : (
+                            <>
+                              <Camera size={18} />
+                              <span className="text-[9px] font-bold uppercase">Add</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="pt-3 border-t border-white/10 flex items-center justify-between">
@@ -404,7 +575,7 @@ export default function AccountReviews() {
                     </button>
                     <button
                       type="submit"
-                      disabled={submitting}
+                      disabled={submitting || uploadingPhoto}
                       className="btn-primary px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer disabled:opacity-50 flex items-center gap-2"
                     >
                       <Save className="w-4 h-4" />

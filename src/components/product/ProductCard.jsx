@@ -5,8 +5,9 @@ import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
 import { useToast } from '../../context/ToastContext';
 import { formatPrice } from '../../utils/helpers';
+import { triggerCartBadgePop, triggerButtonFeedback } from '../../lib/motion/hooks/useCartMotion';
 
-export default function ProductCard({ product, className = '', disableMotion = false }) {
+export default function ProductCard({ product, className = '', disableMotion = false, index = 0 }) {
   const { addToCart } = useCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
   const { success } = useToast();
@@ -26,6 +27,8 @@ export default function ProductCard({ product, className = '', disableMotion = f
     e.preventDefault();
     e.stopPropagation();
     if (isOutOfStock) return;
+    triggerButtonFeedback(e.currentTarget);
+    triggerCartBadgePop();
     if (addToCart) addToCart(product);
     if (success) success(`${product.name || 'Product'} added to cart`);
   };
@@ -67,15 +70,18 @@ export default function ProductCard({ product, className = '', disableMotion = f
         )}
 
         {/* Wishlist Button */}
-        <button
+        <motion.button
+          whileHover={{ scale: 1.15 }}
+          whileTap={{ scale: 0.9 }}
+          transition={{ type: "spring", stiffness: 400, damping: 17 }}
           onClick={handleToggleWishlist}
-          className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 p-1 sm:p-2 bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/10 rounded-full transition-all"
+          className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 p-1 sm:p-2 bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/10 rounded-full transition-all cursor-pointer"
           aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
         >
           <Heart 
             className={`w-3 h-3 sm:w-4 sm:h-4 transition-colors ${isWishlisted ? 'fill-apex-red text-apex-red' : 'text-gray-300 hover:text-white'}`} 
           />
-        </button>
+        </motion.button>
 
         {/* Product Image - Full Container Fill (object-cover) */}
         <img 
@@ -128,17 +134,20 @@ export default function ProductCard({ product, className = '', disableMotion = f
       </div>
 
       {/* Add to Cart Button */}
-      <button
+      <motion.button
+        whileHover={!isOutOfStock ? { scale: 1.02, y: -1 } : {}}
+        whileTap={!isOutOfStock ? { scale: 0.98 } : {}}
+        transition={{ type: "spring", stiffness: 400, damping: 17 }}
         onClick={handleAddToCart}
         disabled={isOutOfStock}
-        className={`w-full py-2 sm:py-3 border-t uppercase text-[10px] sm:text-sm font-semibold tracking-wider transition-colors mt-auto ${
+        className={`w-full py-2 sm:py-3 border-t uppercase text-[10px] sm:text-sm font-semibold tracking-wider transition-colors mt-auto cursor-pointer ${
           isOutOfStock
             ? 'bg-gray-800/80 text-gray-500 border-white/5 cursor-not-allowed'
             : 'bg-apex-gray/50 border-white/5 text-white hover:bg-apex-red hover:border-apex-red'
         }`}
       >
         {isOutOfStock ? 'OUT OF STOCK' : 'ADD TO CART'}
-      </button>
+      </motion.button>
     </>
   );
 
@@ -154,9 +163,10 @@ export default function ProductCard({ product, className = '', disableMotion = f
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 24 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-50px" }}
+      viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.5, delay: (index % 6) * 0.07, ease: [0.22, 1, 0.36, 1] }}
       className={baseClasses}
     >
       {cardContent}
