@@ -13,12 +13,16 @@ import {
   ArrowRight,
   ShieldCheck,
   RefreshCw,
+  Video,
+  FileVideo,
+  Play,
 } from 'lucide-react';
 import { formatPrice } from '../../utils/helpers';
 import {
   fetchReturnSettings,
   submitReturnRequest,
   uploadReturnEvidence,
+  uploadReturnVideo,
   checkOrderItemReturnEligibility,
 } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
@@ -43,6 +47,15 @@ export default function ReturnRequestModal({
   const [description, setDescription] = useState('');
   const [evidenceUrls, setEvidenceUrls] = useState([]);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
+
+  // Unboxing Video States
+  const [hasUnboxingVideo, setHasUnboxingVideo] = useState(null); // null | true | false
+  const [unboxingVideoUrl, setUnboxingVideoUrl] = useState('');
+  const [unboxingVideoPath, setUnboxingVideoPath] = useState('');
+  const [unboxingVideoName, setUnboxingVideoName] = useState('');
+  const [unboxingVideoSize, setUnboxingVideoSize] = useState(0);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -60,6 +73,11 @@ export default function ReturnRequestModal({
       setPackagingAvailable(true);
       setDescription('');
       setEvidenceUrls([]);
+      setHasUnboxingVideo(null);
+      setUnboxingVideoUrl('');
+      setUnboxingVideoPath('');
+      setUnboxingVideoName('');
+      setUnboxingVideoSize(0);
     }
   }, [isOpen]);
 
@@ -115,6 +133,36 @@ export default function ReturnRequestModal({
     setEvidenceUrls((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
+  const handleVideoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingVideo(true);
+    try {
+      const videoResult = await uploadReturnVideo(file);
+      if (videoResult) {
+        setUnboxingVideoUrl(videoResult.url);
+        setUnboxingVideoPath(videoResult.path || '');
+        setUnboxingVideoName(videoResult.name || file.name);
+        setUnboxingVideoSize(videoResult.size || file.size);
+        setHasUnboxingVideo(true);
+        if (toastSuccess) toastSuccess('Unboxing video uploaded successfully!');
+      }
+    } catch (err) {
+      console.warn('Unboxing video upload error:', err);
+      if (toastError) toastError(err.message || 'Failed to upload unboxing video. Please try a smaller video (under 100MB).');
+    } finally {
+      setUploadingVideo(false);
+    }
+  };
+
+  const handleRemoveVideo = () => {
+    setUnboxingVideoUrl('');
+    setUnboxingVideoPath('');
+    setUnboxingVideoName('');
+    setUnboxingVideoSize(0);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -166,6 +214,10 @@ export default function ReturnRequestModal({
         packaging_available: packagingAvailable,
         description: description.trim(),
         evidence_urls: evidenceUrls,
+        has_unboxing_video: hasUnboxingVideo === true,
+        unboxing_video_url: unboxingVideoUrl || null,
+        unboxing_video_path: unboxingVideoPath || null,
+        unboxing_video_available: Boolean(unboxingVideoUrl),
         delivered_at: order.delivered_at || order.updated_at || order.created_at,
       };
 
@@ -409,6 +461,140 @@ export default function ReturnRequestModal({
                 required
                 className="w-full bg-[#141414] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-apex-red resize-none"
               />
+            </div>
+
+            {/* Reason-Specific Damage / Unboxing Notice */}
+            {['damaged', 'defective', 'wrong_item', 'missing_accessory', 'not_as_described'].includes(reason) && (
+              <div className="p-3.5 bg-amber-500/10 border border-amber-500/25 rounded-2xl flex items-start gap-2.5 text-xs text-amber-300/90 leading-relaxed">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-white font-bold block text-[11px] uppercase tracking-wider mb-0.5">
+                    Unboxing Evidence Recommended
+                  </strong>
+                  <span>An unboxing video may be required to verify damage, wrong-item, missing-item, or delivery-condition claims.</span>
+                </div>
+              </div>
+            )}
+
+            {/* Unboxing Video Section */}
+            <div className="bg-[#121212] border border-white/10 rounded-2xl p-4 sm:p-5 space-y-3.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                  <Video className="w-4 h-4 text-apex-red" />
+                  Unboxing Video Evidence
+                </label>
+                {unboxingVideoUrl && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                    <CheckCircle2 className="w-3 h-3" /> Video Attached
+                  </span>
+                )}
+              </div>
+
+              {/* Question: Do you have an unboxing video? */}
+              <div>
+                <p className="text-xs text-gray-300 mb-2">Do you have an unboxing video of opening your parcel?</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setHasUnboxingVideo(true)}
+                    className={`py-2.5 px-3 rounded-xl border text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      hasUnboxingVideo === true
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                        : 'bg-[#181818] border-white/10 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Yes, I have video</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHasUnboxingVideo(false);
+                      handleRemoveVideo();
+                    }}
+                    className={`py-2.5 px-3 rounded-xl border text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      hasUnboxingVideo === false
+                        ? 'bg-white/10 text-white border-white/30'
+                        : 'bg-[#181818] border-white/10 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <span>No Video</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* If YES: Show Video Uploader or Uploaded Video Card */}
+              {hasUnboxingVideo === true && (
+                <div className="pt-2">
+                  {!unboxingVideoUrl ? (
+                    <div className="border border-dashed border-apex-red/40 rounded-2xl p-4 text-center bg-apex-red/5 hover:bg-apex-red/10 transition-colors">
+                      <input
+                        type="file"
+                        id="unboxing-video-upload"
+                        accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/*"
+                        onChange={handleVideoUpload}
+                        className="hidden"
+                        disabled={uploadingVideo}
+                      />
+                      <label
+                        htmlFor="unboxing-video-upload"
+                        className="cursor-pointer flex flex-col items-center justify-center gap-1.5"
+                      >
+                        {uploadingVideo ? (
+                          <>
+                            <Loader2 className="w-7 h-7 text-apex-red animate-spin" />
+                            <span className="text-xs font-bold text-white uppercase tracking-wider">Uploading unboxing video...</span>
+                            <span className="text-[10px] text-gray-400">Please wait while the video is processed</span>
+                          </>
+                        ) : (
+                          <>
+                            <FileVideo className="w-7 h-7 text-apex-red" />
+                            <span className="text-xs font-bold text-white uppercase tracking-wider">
+                              Click to upload unboxing video
+                            </span>
+                            <span className="text-[10px] text-gray-400">MP4, MOV, WEBM (Max 100MB)</span>
+                          </>
+                        )}
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 bg-[#181818] border border-emerald-500/30 rounded-2xl flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+                          <FileVideo className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white truncate">{unboxingVideoName || 'unboxing_video.mp4'}</p>
+                          <p className="text-[10px] text-gray-400">
+                            {unboxingVideoSize ? `${(unboxingVideoSize / (1024 * 1024)).toFixed(1)} MB • ` : ''}Ready for inspection review
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleRemoveVideo}
+                          className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
+                          title="Remove video"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* If NO: Show clear note */}
+              {hasUnboxingVideo === false && (
+                <div className="p-3 bg-white/5 border border-white/10 rounded-xl text-xs text-gray-400 leading-relaxed">
+                  <p>
+                    <strong className="text-gray-300">Note:</strong> An unboxing video may be required to verify certain damage, wrong-item, missing-item, or parcel-condition claims. You may still proceed with your return request.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Photo Evidence Upload */}

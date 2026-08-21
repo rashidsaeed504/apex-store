@@ -18,6 +18,8 @@ import {
   DollarSign,
   ArrowLeft,
   XCircle,
+  Video,
+  FileVideo,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { fetchCustomerReturns } from '../../services/api';
@@ -523,7 +525,43 @@ export default function AccountReturns() {
                 </div>
               )}
 
-              {/* 5. Uploaded Photo Evidence */}
+              {/* 5. Unboxing Video Evidence */}
+              <div className="bg-[#121212] border border-white/10 rounded-2xl p-4 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                    <Video className="w-3.5 h-3.5 text-apex-red" /> Unboxing Video Evidence
+                  </h3>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${selectedReturn.unboxing_video_url ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-gray-400 border-white/10'}`}>
+                    {selectedReturn.unboxing_video_url ? '✓ Submitted' : 'No unboxing video submitted'}
+                  </span>
+                </div>
+
+                {selectedReturn.unboxing_video_url ? (
+                  <div className="space-y-2 pt-1">
+                    <div className="relative rounded-xl overflow-hidden bg-black aspect-video max-h-64 flex items-center justify-center border border-white/5">
+                      <video
+                        src={selectedReturn.unboxing_video_url}
+                        controls
+                        preload="metadata"
+                        className="w-full h-full object-contain max-h-64"
+                      >
+                        Your browser does not support the video tag.
+                      </video>
+                    </div>
+                    {selectedReturn.unboxing_video_uploaded_at && (
+                      <p className="text-[10px] text-gray-500">
+                        Uploaded: {new Date(selectedReturn.unboxing_video_uploaded_at).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">
+                    No unboxing video was submitted with this return request.
+                  </p>
+                )}
+              </div>
+
+              {/* 6. Uploaded Photo Evidence */}
               {Array.isArray(selectedReturn.evidence_urls) && selectedReturn.evidence_urls.length > 0 && (
                 <div className="bg-[#121212] border border-white/10 rounded-2xl p-4 sm:p-5">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-1.5">

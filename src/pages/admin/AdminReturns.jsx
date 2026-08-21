@@ -26,6 +26,10 @@ import {
   AlertTriangle,
   ArrowRight,
   Sparkles,
+  Video,
+  FileVideo,
+  Play,
+  Info,
 } from 'lucide-react';
 import {
   fetchAdminReturns,
@@ -424,6 +428,18 @@ export default function AdminReturns() {
                             <p className="text-[10px] text-gray-400 mt-0.5 truncate">
                               Qty: {item.quantity || 1} • <span className="text-gray-300">{ret.reason}</span>
                             </p>
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                              {ret.unboxing_video_url && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                  <Video className="w-2.5 h-2.5" /> Video
+                                </span>
+                              )}
+                              {Array.isArray(ret.evidence_urls) && ret.evidence_urls.length > 0 && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-white/10 text-gray-300 border border-white/10">
+                                  <Camera className="w-2.5 h-2.5" /> {ret.evidence_urls.length} Photo{ret.evidence_urls.length > 1 ? 's' : ''}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="p-4 font-mono font-bold text-apex-red">
                             {formatPrice(ret.final_refund_amount || ret.approved_amount || ret.requested_amount || 0)}
@@ -706,30 +722,108 @@ export default function AdminReturns() {
                 )}
               </div>
 
-              {/* 3. Evidence Photos */}
-              {Array.isArray(selectedReturn.evidence_urls) && selectedReturn.evidence_urls.length > 0 && (
-                <div className="bg-[#121212] border border-white/10 rounded-2xl p-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-1.5">
-                    <Camera className="w-3.5 h-3.5 text-apex-red" /> Customer Evidence Photos
+              {/* 3. Evidence Review Section (Unboxing Video & Photos) */}
+              <div className="bg-[#121212] border border-white/10 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-apex-red" />
+                    Submitted Evidence & Verification
                   </h4>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
-                    {selectedReturn.evidence_urls.map((url, idx) => (
-                      <a
-                        key={idx}
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="aspect-square rounded-xl overflow-hidden border border-white/10 hover:border-apex-red block group relative bg-[#181818]"
-                      >
-                        <img src={url} alt={`Evidence ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                          <ExternalLink className="w-4 h-4" />
-                        </div>
-                      </a>
-                    ))}
+                  <div className="flex items-center gap-2 text-[10px] font-bold">
+                    <span className={`px-2 py-0.5 rounded-full border ${selectedReturn.unboxing_video_url ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-white/5 text-gray-400 border-white/10'}`}>
+                      Video: {selectedReturn.unboxing_video_url ? '✓ Available' : '— Not provided'}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full border ${(selectedReturn.evidence_urls?.length || 0) > 0 ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-white/5 text-gray-400 border-white/10'}`}>
+                      Photos: {(selectedReturn.evidence_urls?.length || 0) > 0 ? `✓ ${selectedReturn.evidence_urls.length}` : '— None'}
+                    </span>
                   </div>
                 </div>
-              )}
+
+                {/* Unboxing Video Viewer */}
+                <div className="space-y-2">
+                  <h5 className="text-[11px] font-bold uppercase tracking-wider text-gray-300 flex items-center gap-1.5">
+                    <Video className="w-3.5 h-3.5 text-apex-red" /> Unboxing Video Evidence
+                  </h5>
+
+                  {selectedReturn.unboxing_video_url ? (
+                    <div className="bg-[#161616] border border-amber-500/30 rounded-xl p-3 space-y-2.5">
+                      <div className="relative rounded-lg overflow-hidden bg-black aspect-video max-h-72 flex items-center justify-center border border-white/5">
+                        <video
+                          src={selectedReturn.unboxing_video_url}
+                          controls
+                          preload="metadata"
+                          className="w-full h-full object-contain max-h-72"
+                        >
+                          Your browser does not support the video tag.
+                        </video>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-gray-400 pt-1">
+                        <span>
+                          Uploaded: {selectedReturn.unboxing_video_uploaded_at || selectedReturn.created_at
+                            ? new Date(selectedReturn.unboxing_video_uploaded_at || selectedReturn.created_at).toLocaleString()
+                            : 'With request'}
+                        </span>
+                        <a
+                          href={selectedReturn.unboxing_video_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-apex-red hover:underline font-bold"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Open in New Tab
+                        </a>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-[#161616] border border-white/5 rounded-xl text-xs text-gray-400 flex items-center justify-between">
+                      <span>No unboxing video submitted by customer.</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdminNote((prev) => (prev ? `${prev} | ` : '') + 'Requesting customer to provide continuous unboxing video for transit damage verification.');
+                          toastSuccess('Prefilled admin note requesting unboxing video.');
+                        }}
+                        className="text-[10px] uppercase font-bold text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                      >
+                        Request Video in Notes
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Evidence Photos */}
+                {Array.isArray(selectedReturn.evidence_urls) && selectedReturn.evidence_urls.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-white/5">
+                    <h5 className="text-[11px] font-bold uppercase tracking-wider text-gray-300 flex items-center gap-1.5">
+                      <Camera className="w-3.5 h-3.5 text-apex-red" /> Customer Evidence Photos ({selectedReturn.evidence_urls.length})
+                    </h5>
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
+                      {selectedReturn.evidence_urls.map((url, idx) => (
+                        <a
+                          key={idx}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="aspect-square rounded-xl overflow-hidden border border-white/10 hover:border-apex-red block group relative bg-[#181818]"
+                        >
+                          <img src={url} alt={`Evidence ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                            <ExternalLink className="w-4 h-4" />
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Admin Policy Guideline Alert */}
+                <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl text-[11px] text-gray-400 flex items-start gap-2 leading-relaxed">
+                  <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Admin Evidence Policy:</strong> Unboxing video is supporting evidence and does not automatically guarantee approval. Final return/refund decisions depend on eligibility, product condition, and evidence review.
+                  </span>
+                </div>
+              </div>
 
               {/* 4. Courier Pickup Assignment Section */}
               <div className="bg-[#121212] border border-blue-500/30 rounded-2xl p-4 sm:p-5 space-y-4">

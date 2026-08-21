@@ -12,7 +12,8 @@ import {
   Loader2, 
   AlertCircle,
   ShoppingBag,
-  ArrowLeft
+  ArrowLeft,
+  Video
 } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
@@ -395,6 +396,15 @@ export default function Checkout() {
                 {formatPrice(placedOrder?.total || total)}
               </span>
             </div>
+
+            {/* Unboxing Video Delivery Notice */}
+            <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start gap-3 text-xs text-amber-200/90 leading-relaxed shadow-sm">
+              <Video className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <strong className="text-white block font-bold text-[11px] uppercase tracking-wider mb-0.5">📹 Unboxing Tip</strong>
+                <span>Please record a continuous video while opening your parcel. It may be required for damage, wrong-item, missing-item, or delivery-condition return claims.</span>
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-3 w-full">
@@ -753,11 +763,18 @@ export default function Checkout() {
               </div>
             </div>
 
-            {/* Back to Cart */}
-            <div className="pt-2 border-t border-white/5 text-center">
-              <Link to="/cart" className="text-xs text-gray-400 hover:text-white transition-colors">
-                ← Modify Cart Items
-              </Link>
+            {/* Back to Cart & Unboxing Tip */}
+            <div className="pt-3 border-t border-white/5 space-y-3">
+              <div className="p-3 bg-[#141414] border border-white/10 rounded-xl flex items-start gap-2.5 text-[11px] text-gray-400 leading-snug">
+                <Video className="w-4 h-4 text-apex-red shrink-0 mt-0.5" />
+                <span><strong className="text-white">Unboxing Tip:</strong> Record a continuous unboxing video upon delivery for quick verification of damage or missing item claims.</span>
+              </div>
+
+              <div className="text-center">
+                <Link to="/cart" className="text-xs text-gray-400 hover:text-white transition-colors">
+                  ← Modify Cart Items
+                </Link>
+              </div>
             </div>
           </div>
         </motion.div>

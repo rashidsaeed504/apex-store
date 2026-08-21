@@ -342,7 +342,7 @@ export default function Hero() {
       <div className="container max-w-7xl mx-auto px-4 mt-2 sm:mt-8 lg:mt-12 sm:px-6 md:px-8 relative z-10 w-full">
         <div className="hero-slider group/slider relative w-full">
           {/* .slides-viewport: responsive height that comfortably holds mobile stacked content and desktop 2-col layout */}
-          <div className="slides-viewport relative min-h-[520px] xs:min-h-[560px] sm:min-h-[520px] md:min-h-[580px] lg:min-h-[620px] overflow-hidden w-full">
+          <div className="slides-viewport relative mt-1 sm:mt-4 lg:mt-0 min-h-[600px] sm:min-h-[520px] md:min-h-[580px] lg:min-h-[620px] overflow-hidden w-full">
             {parsedSlides.map((slide, index) => {
               const isCurrent = index === currentIndex;
               const isPrev = index === prevIndex;
@@ -377,7 +377,7 @@ export default function Hero() {
                   }}
                   aria-hidden={!isCurrent}
                 >
-                  <div className="w-full flex flex-col lg:flex-row items-start lg:items-center justify-between gap-2 sm:gap-6 lg:gap-12 pt-1 sm:pt-4 lg:pt-0">
+                  <div className="w-full flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 sm:gap-6 lg:gap-12 pt-1 sm:pt-4 lg:pt-0">
                     {/* Left Content Column */}
                     <div className="w-full lg:w-1/2 flex flex-col items-start text-left z-10">
                       {/* 1. Eyebrow Badge & Promotional Tag */}
@@ -400,7 +400,7 @@ export default function Hero() {
                       </div>
 
                       {/* 2. Main Headline */}
-                      <h1 className="hero-title-el text-[30px] xs:text-[34px] sm:text-5xl md:text-6xl lg:text-7xl xl:text-[80px] font-black uppercase tracking-tight leading-[1.05] sm:leading-[0.92] mb-3 sm:mb-5 text-white max-w-2xl text-left break-words">
+                      <h1 className="hero-title-el text-[30px] sm:text-5xl md:text-6xl lg:text-7xl xl:text-[80px] font-black uppercase tracking-tight leading-[1.05] sm:leading-[0.92] mb-3 sm:mb-5 text-white max-w-2xl text-left break-words">
                         {slide?.title}{" "}
                         {slide?.highlight_text && (
                           <span className="text-gradient-red drop-shadow-[0_0_35px_rgba(220,38,38,0.4)] block sm:inline">
@@ -411,7 +411,7 @@ export default function Hero() {
 
                       {/* 3. Description */}
                       {slide?.description && (
-                        <p className="hero-desc-el text-xs xs:text-sm sm:text-base md:text-lg text-gray-400 max-w-[340px] sm:max-w-md lg:max-w-lg mb-4 sm:mb-6 font-normal leading-relaxed text-left">
+                        <p className="hero-desc-el text-xs sm:text-base md:text-lg text-gray-400 max-w-[340px] sm:max-w-md lg:max-w-lg mb-4 sm:mb-6 font-normal leading-relaxed text-left">
                           {slide.description}
                         </p>
                       )}
@@ -479,7 +479,7 @@ export default function Hero() {
 
                       <div
                         ref={isCurrent ? heroProductParallaxRef : null}
-                        className="relative z-10 w-full flex items-center justify-center h-[230px] xs:h-[260px] sm:h-[280px] md:h-[380px] lg:h-[480px] xl:h-[500px]"
+                        className="relative z-10 w-full flex items-center justify-center h-[260px] sm:h-[280px] md:h-[380px] lg:h-[480px] xl:h-[500px]"
                       >
                         <picture className="w-full h-full max-h-full max-w-full flex items-center justify-center">
                           {slide?.mobile_image_url && (
@@ -496,7 +496,7 @@ export default function Hero() {
                             decoding={index === 0 ? "sync" : "async"}
                             width={520}
                             height={520}
-                            className="h-full max-h-[230px] xs:max-h-[260px] sm:max-h-[280px] md:max-h-[380px] lg:max-h-[480px] xl:max-h-[500px] w-auto max-w-[92%] xs:max-w-[90%] sm:max-w-full object-contain drop-shadow-[0_20px_45px_rgba(0,0,0,0.95)] filter select-none pointer-events-none"
+                            className="h-full max-h-[260px] sm:max-h-[280px] md:max-h-[380px] lg:max-h-[480px] xl:max-h-[500px] w-auto max-w-[92%] sm:max-w-full object-contain object-center drop-shadow-[0_20px_45px_rgba(0,0,0,0.95)] filter select-none pointer-events-none"
                             onError={(e) => {
                               e.currentTarget.onerror = null;
                               e.currentTarget.src = heroProductImg;
@@ -538,7 +538,7 @@ export default function Hero() {
 
           {/* .pagination: Bottom Slide Pagination Indicators */}
           {totalSlides > 1 && (
-            <div className="pagination flex items-center justify-center gap-1.5 sm:gap-2 mt-1 sm:mt-6 lg:mt-10 z-20 relative">
+            <div className="pagination flex items-center justify-center gap-1.5 sm:gap-2 mt-2 sm:mt-6 lg:mt-10 z-20 relative">
               {slides.map((_, index) => (
                 <button
                   key={index}

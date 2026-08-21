@@ -65,17 +65,17 @@ export default function RefundPolicy() {
               <span className="text-apex-red">01.</span> Policy Overview & Guarantee
             </h2>
             <p>
-              At <strong>APEX Store</strong>, customer confidence and satisfaction are central to our brand. If you encounter any functional defect, transit damage, or receive an incorrect item, we provide a streamlined return, replacement, or refund procedure.
+              At <strong>APEX Store</strong>, customer confidence and satisfaction are central to our brand. If you encounter any functional defect, transit damage, or receive an incorrect item, we provide a streamlined return, replacement, or refund procedure under our <strong>7 Days Return</strong> policy.
             </p>
           </div>
 
           {/* Return Window Box */}
           <div className="p-5 bg-apex-red/10 border border-apex-red/25 rounded-xl space-y-2">
             <h2 className="text-sm font-bold uppercase tracking-wider text-apex-red flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" /> {windowDays}-Day Hassle-Free Return Window
+              <AlertCircle className="w-4 h-4" /> {windowDays}-Day Return Window
             </h2>
             <p className="text-xs text-gray-300 leading-relaxed">
-              All return or replacement claims must be initiated within <strong>{windowDays} calendar days</strong> of package delivery. The return window is calculated based on the official delivered date.
+              All return or replacement claims must be initiated within <strong>{windowDays} calendar days</strong> of package delivery. The return window is calculated based on the official courier delivered timestamp.
             </p>
           </div>
 
@@ -92,7 +92,7 @@ export default function RefundPolicy() {
               </div>
               <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span className="text-xs text-gray-300">Complete accessories (cables, manuals, extra ear tips, packaging box).</span>
+                <span className="text-xs text-gray-300">Complete accessories (cables, manuals, extra ear tips, retail box).</span>
               </div>
               <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
@@ -105,10 +105,69 @@ export default function RefundPolicy() {
             </div>
           </div>
 
+          {/* Unboxing Video Requirement (NEW) */}
+          <div className="p-6 bg-[#0f0f0f] border border-amber-500/30 rounded-2xl space-y-4">
+            <h2 className="text-base sm:text-lg font-bold uppercase tracking-wider text-amber-400 border-b border-white/10 pb-2 flex items-center gap-2">
+              <span className="text-apex-red">03.</span> Unboxing Video Requirement
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
+              We strongly recommend that customers record a continuous, unedited video while opening their parcel at the time of delivery.
+            </p>
+
+            <div className="bg-black/50 p-4 rounded-xl border border-white/5 space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-white">The video should clearly show:</p>
+              <ul className="list-disc pl-5 space-y-1 text-xs text-gray-300">
+                <li>The sealed parcel with shipping label and order information visible</li>
+                <li>The parcel condition before opening</li>
+                <li>The complete, uninterrupted opening and unboxing process</li>
+                <li>The product and all included accessories</li>
+                <li>Any visible transit damage, missing item, wrong product, or physical defect</li>
+              </ul>
+            </div>
+
+            <div className="space-y-2 text-xs text-gray-300 leading-relaxed">
+              <p>
+                <strong>Supporting Evidence for Damage & Wrong-Item Claims:</strong> For claims involving a damaged product, wrong product received, missing item/accessory, parcel tampering, or product condition disputes, an unboxing video <strong>may be required</strong> as supporting evidence before a return, replacement, or refund can be approved.
+              </p>
+              <p>
+                The video should be continuous and unedited, starting before the parcel is opened.
+              </p>
+              <p className="text-gray-400">
+                If an unboxing video is not available, APEX STORE may request additional evidence (such as detailed photos of the packaging and product) and may not be able to verify certain delivery or transit damage claims.
+              </p>
+              <p>
+                When returning a product, the customer may be asked to provide:
+              </p>
+              <ul className="list-disc pl-5 space-y-0.5 text-gray-400">
+                <li>Original unboxing video</li>
+                <li>Clear photos / videos of the product</li>
+                <li>Photos / videos of the exterior and interior packaging</li>
+              </ul>
+              <p className="text-[11px] text-gray-400 italic pt-1">
+                APEX STORE reserves the right to review submitted evidence before approving a return, replacement, or refund.
+              </p>
+            </div>
+          </div>
+
+          {/* Return Shipping Fees */}
+          <div>
+            <h2 className="text-base sm:text-lg font-bold uppercase tracking-wider text-white mb-3 border-b border-white/10 pb-2 flex items-center gap-2">
+              <span className="text-apex-red">04.</span> Return Shipping & Logistics
+            </h2>
+            <div className="p-4 bg-[#121212] border border-white/10 rounded-xl space-y-2 text-xs text-gray-300">
+              <p>
+                <strong className="text-white">Return Shipping Terms:</strong> Return shipping is not provided as a free service. For customer-initiated returns (e.g. change of mind or personal preference), return courier charges are the responsibility of the customer.
+              </p>
+              <p className="text-gray-400">
+                In cases of verified manufacturing defects or store fulfillment errors (e.g., incorrect item sent), APEX Store will facilitate package pickup through our contracted courier partners.
+              </p>
+            </div>
+          </div>
+
           {/* Non-Returnable Items */}
           <div>
             <h2 className="text-base sm:text-lg font-bold uppercase tracking-wider text-white mb-3 border-b border-white/10 pb-2 flex items-center gap-2">
-              <span className="text-apex-red">03.</span> Non-Returnable Conditions
+              <span className="text-apex-red">05.</span> Non-Returnable Conditions
             </h2>
             <p className="mb-2">We cannot accept returns or issue refunds in the following circumstances:</p>
             <ul className="list-disc pl-5 space-y-1.5 text-gray-400">
@@ -121,7 +180,7 @@ export default function RefundPolicy() {
           {/* Refund Processing Timelines */}
           <div>
             <h2 className="text-base sm:text-lg font-bold uppercase tracking-wider text-white mb-3 border-b border-white/10 pb-2 flex items-center gap-2">
-              <span className="text-apex-red">04.</span> Refund Processing & Timelines
+              <span className="text-apex-red">06.</span> Refund Processing & Timelines
             </h2>
             <p>
               Once your returned package arrives at our inspection facility, our quality control team verifies its condition within <strong>24 to 48 hours</strong>. Upon approval, your refund will be disbursed within <strong>3 to 5 business days</strong> via:
@@ -145,13 +204,13 @@ export default function RefundPolicy() {
               </div>
               <div className="p-3 bg-black/40 rounded-lg border border-white/5">
                 <span className="text-apex-red font-mono font-bold">STEP 02</span>
-                <p className="text-white font-medium mt-1">Select Reason & Photos</p>
-                <p className="text-gray-400 text-[11px] mt-0.5">Choose quantity, condition, and upload photo evidence of any defect or transit damage.</p>
+                <p className="text-white font-medium mt-1">Select Reason & Video Evidence</p>
+                <p className="text-gray-400 text-[11px] mt-0.5">Choose quantity, condition, and upload your unboxing video or photos of the defect.</p>
               </div>
               <div className="p-3 bg-black/40 rounded-lg border border-white/5">
                 <span className="text-apex-red font-mono font-bold">STEP 03</span>
-                <p className="text-white font-medium mt-1">Courier Pickup</p>
-                <p className="text-gray-400 text-[11px] mt-0.5">Our logistics partner schedules package pickup directly from your shipping address.</p>
+                <p className="text-white font-medium mt-1">Courier Pickup & Inspection</p>
+                <p className="text-gray-400 text-[11px] mt-0.5">Package is handed over to courier and inspected at our testing warehouse.</p>
               </div>
               <div className="p-3 bg-black/40 rounded-lg border border-white/5">
                 <span className="text-apex-red font-mono font-bold">STEP 04</span>

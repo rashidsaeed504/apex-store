@@ -206,7 +206,7 @@ const About = () => {
             {[
               { icon: <Truck className="w-6 h-6" />, title: 'Fast Delivery', desc: 'Get your orders quickly.' },
               { icon: <Package className="w-6 h-6" />, title: 'Genuine Products', desc: 'Sourced directly from brands.' },
-              { icon: <RefreshCcw className="w-6 h-6" />, title: 'Easy Returns', desc: 'Hassle-free 7-day returns.' }
+              { icon: <RefreshCcw className="w-6 h-6" />, title: '7 Days Return', desc: '7-day inspection and return policy.' }
             ].map((promise, idx) => (
               <motion.div
                 key={idx}

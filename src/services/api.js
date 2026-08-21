@@ -3469,7 +3469,9 @@ export const DEFAULT_RETURN_SETTINGS = {
     { id: 'changed_mind', label: 'Changed my mind / No longer needed', is_active: true, sort_order: 7 },
     { id: 'other', label: 'Other reason (specify in notes)', is_active: true, sort_order: 8 },
   ],
-  policy_banner_text: '7-Day APEX Guarantee: Hassle-Free Returns & Replacements',
+  policy_banner_text: '7-Day APEX Guarantee: 7 Days Return & Replacements',
+  require_unboxing_video_for_damage: true,
+  max_video_size_mb: 100,
   enabled: true,
 };
 
@@ -3837,6 +3839,11 @@ export async function submitReturnRequest(payload) {
       },
     ],
     evidence_urls: payload.evidence_urls || [],
+    unboxing_video_url: payload.unboxing_video_url || null,
+    unboxing_video_path: payload.unboxing_video_path || null,
+    unboxing_video_available: Boolean(payload.unboxing_video_url || payload.unboxing_video_available || payload.has_unboxing_video),
+    unboxing_video_uploaded_at: payload.unboxing_video_url ? now : (payload.unboxing_video_uploaded_at || null),
+    unboxing_video_status: payload.unboxing_video_url ? 'available' : (payload.has_unboxing_video === false ? 'not_provided' : 'none'),
     status_history: [
       {
         status: 'requested',
@@ -3997,6 +4004,73 @@ export async function approveReturnRefund(returnId, details) {
  */
 export async function uploadReturnEvidence(file) {
   return uploadImageToSupabase(file, 'returns');
+}
+
+/**
+ * Upload Unboxing Video to Supabase Storage with Resilient Fallback
+ */
+export async function uploadReturnVideo(file, folder = 'returns/unboxing') {
+  if (!file) return null;
+
+  // Validate format (MP4, MOV, WEBM, M4V, 3GP, AVI)
+  const allowedExtensions = ['mp4', 'mov', 'webm', 'm4v', '3gp', 'avi'];
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const isVideoType = file.type?.startsWith('video/') || allowedExtensions.includes(ext);
+
+  if (!isVideoType) {
+    throw new Error('Please upload a valid video format (MP4, MOV, or WEBM).');
+  }
+
+  // Validate size (max 100MB)
+  const maxBytes = 100 * 1024 * 1024;
+  if (file.size > maxBytes) {
+    throw new Error('Video file size must be less than 100MB.');
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).substring(2)}.${ext || 'mp4'}`;
+      const { data, error } = await supabase.storage
+        .from('product-images')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType: file.type || 'video/mp4',
+        });
+
+      if (!error && data) {
+        const { data: publicData } = supabase.storage
+          .from('product-images')
+          .getPublicUrl(fileName);
+
+        return {
+          url: publicData?.publicUrl || '',
+          path: fileName,
+          name: file.name,
+          size: file.size,
+          type: file.type || 'video/mp4',
+        };
+      } else if (error) {
+        console.warn('Supabase video upload warning:', error.message);
+      }
+    } catch (e) {
+      console.warn('Supabase video upload error:', e.message);
+    }
+  }
+
+  // Resilient Fallback: Read file as Data URL (base64) so video upload never crashes
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      url: reader.result,
+      path: `local-video-${Date.now()}.${ext || 'mp4'}`,
+      name: file.name,
+      size: file.size,
+      type: file.type || 'video/mp4',
+    });
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
 }
 
 // ==========================================
