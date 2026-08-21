@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigationType } from 'react-router-dom';
 import Lenis from 'lenis';
 import { gsap, ScrollTrigger } from '../lib/motion';
 import PageTransition from '../lib/motion/components/PageTransition';
@@ -52,6 +52,7 @@ function ToastRenderer() {
 export default function MainLayout() {
   const { isCartOpen, openCart, closeCart } = useCart();
   const location = useLocation();
+  const navigationType = useNavigationType();
   const lenisRef = useRef(null);
 
   // Initialize Lenis Smooth Inertia Scrolling & GSAP ScrollTrigger Synchronization
@@ -90,15 +91,37 @@ export default function MainLayout() {
     };
   }, []);
 
-  // Scroll to top on route change smoothly and refresh ScrollTrigger
+  // Global scroll-to-top on route change
+  // PUSH / REPLACE navigation → always scroll to top
+  // POP navigation (browser back/forward) → allow natural browser restoration
   useEffect(() => {
+    if (navigationType === 'POP') {
+      // Browser back/forward — let the browser handle scroll restoration naturally.
+      // Still refresh ScrollTrigger so GSAP-animated elements recalculate positions.
+      requestAnimationFrame(() => {
+        ScrollTrigger.refresh();
+      });
+      return;
+    }
+
+    // PUSH or REPLACE — new page navigation, scroll to top immediately.
+    // 1. Force native scroll to top first (handles the real scrollbar)
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+
+    // 2. Reset Lenis virtual scroll position so it doesn't fight the native scroll
     if (lenisRef.current) {
       lenisRef.current.scrollTo(0, { immediate: true });
-    } else {
-      window.scrollTo(0, 0);
     }
-    ScrollTrigger.refresh();
-  }, [location.pathname]);
+
+    // 3. Double-ensure after the frame paints (Lenis RAF loop can override between frames)
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      if (lenisRef.current) {
+        lenisRef.current.scrollTo(0, { immediate: true });
+      }
+      ScrollTrigger.refresh();
+    });
+  }, [location.pathname, navigationType]);
 
   return (
     <div className="min-h-screen flex flex-col bg-apex-black text-white selection:bg-apex-red/30">
@@ -119,3 +142,4 @@ export default function MainLayout() {
     </div>
   );
 }
+

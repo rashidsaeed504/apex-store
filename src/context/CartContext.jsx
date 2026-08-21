@@ -98,7 +98,7 @@ export function CartProvider({ children }) {
 
   const shipping = useMemo(() => {
     if (subtotal === 0) return 0;
-    return subtotal >= 10000 ? 0 : 299;
+    return subtotal >= 10000 ? 0 : 200;
   }, [subtotal]);
 
   const total = useMemo(() => {

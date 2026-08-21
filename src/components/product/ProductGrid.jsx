@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion';
 import ProductCard from './ProductCard';
 
 export function ProductCardSkeleton() {
@@ -40,26 +39,13 @@ export default function ProductGrid({ products = [], loading = false, columns, c
     );
   }
 
-  const container = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1
-      }
-    }
-  };
-
   return (
-    <motion.div 
-      variants={container}
-      initial="hidden"
-      animate="show"
+    <div 
       className={`grid ${gridClasses} gap-3 sm:gap-6 ${className}`}
     >
       {products.map((product, index) => (
         <ProductCard key={product.id} product={product} index={index} />
       ))}
-    </motion.div>
+    </div>
   );
 }
