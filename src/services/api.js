@@ -2409,6 +2409,60 @@ const LEGACY_HERO_KEY = 'apex_hero_slides_v1';
 
 export const INITIAL_SEED_HERO_BANNERS = [
   {
+    id: 'slide-apex-campaign',
+    title: 'TECH FOR EVERY MOMENT',
+    highlight_text: 'APEX STORE',
+    subtitle: "Discover premium audio, wearables and smart accessories designed for everyday performance.",
+    description: "Discover premium audio, wearables and smart accessories designed for everyday performance.",
+    badge_text: 'OFFICIAL DROP',
+    badge: 'OFFICIAL DROP',
+    promotional_badge: 'CAMPAIGN',
+    image_url: '/banners/apex-campaign-banner.png',
+    desktop_image_url: '/banners/apex-campaign-banner.png',
+    mobile_image_url: '/banners/apex-campaign-mobile.png',
+    button_text: 'EXPLORE GEAR',
+    primary_button_text: 'EXPLORE GEAR',
+    button_url: '/shop',
+    primary_button_link: '/shop',
+    secondary_button_text: 'EXPLORE DEALS',
+    secondary_button_link: '/deals',
+    features: ['Spatial Audio', 'Titanium Wearables', 'Fast Charge', 'Official Warranty'],
+    display_order: 1,
+    sort_order: 1,
+    is_active: true,
+    open_in_new_tab: false,
+    autoplay_duration: 5500,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'slide-thunder-pro',
+    title: 'THUNDER PRO',
+    highlight_text: "Pakistan's Loudest Speaker Box",
+    subtitle: "Pakistan's Loudest Speaker Box featuring RGB LED lights, custom EQ modes & IPX6 splash resistance.",
+    description: "Pakistan's Loudest Speaker Box featuring RGB LED lights, custom EQ modes & IPX6 splash resistance.",
+    badge_text: 'LIVE NOW',
+    badge: 'LIVE NOW',
+    promotional_badge: 'OFFICIAL DROP',
+    image_url: '/banners/thunder-pro-banner.png',
+    desktop_image_url: '/banners/thunder-pro-banner.png',
+    mobile_image_url: '',
+    button_text: 'EXPLORE NOW',
+    primary_button_text: 'EXPLORE NOW',
+    button_url: '/shop',
+    primary_button_link: '/shop',
+    secondary_button_text: 'EXPLORE DEALS',
+    secondary_button_link: '/deals',
+    features: ['RGB LED Lights', 'Customized EQ Modes', 'IPX6 Splash Resistance', "Pakistan's Loudest"],
+    display_order: 2,
+    sort_order: 2,
+    is_active: true,
+    open_in_new_tab: false,
+    autoplay_duration: 5500,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
     id: 1,
     title: 'TECH WITHOUT',
     highlight_text: 'LIMITS.',
@@ -2427,8 +2481,8 @@ export const INITIAL_SEED_HERO_BANNERS = [
     secondary_button_text: 'EXPLORE DEALS',
     secondary_button_link: '/deals',
     features: ['100% Original', 'Free Delivery', '7 Days Return', '24/7 Support'],
-    display_order: 1,
-    sort_order: 1,
+    display_order: 3,
+    sort_order: 3,
     is_active: true,
     open_in_new_tab: false,
     autoplay_duration: 6000,
@@ -2454,8 +2508,8 @@ export const INITIAL_SEED_HERO_BANNERS = [
     secondary_button_text: 'VIEW BEST SELLERS',
     secondary_button_link: '/best-sellers',
     features: ['AMOLED Display', 'Titanium Build', '14-Day Battery', 'IP68 Waterproof'],
-    display_order: 2,
-    sort_order: 2,
+    display_order: 4,
+    sort_order: 4,
     is_active: true,
     open_in_new_tab: false,
     autoplay_duration: 6000,
@@ -2481,8 +2535,8 @@ export const INITIAL_SEED_HERO_BANNERS = [
     secondary_button_text: 'HOT OFFERS',
     secondary_button_link: '/deals',
     features: ['Ultra-Low Latency', 'Studio Audio', 'Dual Mic ANC', '1-Year Warranty'],
-    display_order: 3,
-    sort_order: 3,
+    display_order: 5,
+    sort_order: 5,
     is_active: true,
     open_in_new_tab: false,
     autoplay_duration: 6000,
@@ -2538,6 +2592,12 @@ export function normalizeBannerItem(item, defaultOrder = 1) {
   const is_active = item.is_active !== undefined ? Boolean(item.is_active) : true;
   const open_in_new_tab = Boolean(item.open_in_new_tab);
   const autoplay_duration = Number(item.autoplay_duration || 6000);
+  const position = (item.position ?? item.placement ?? 'middle').toString().trim();
+  const start_date = item.start_date ? String(item.start_date).trim() : '';
+  const end_date = item.end_date ? String(item.end_date).trim() : '';
+  const animation_type = item.animation_type ? String(item.animation_type).trim() : 'slide';
+  const text_animation = item.text_animation ? String(item.text_animation).trim() : 'fade_up';
+  const overlay_opacity = item.overlay_opacity !== undefined && item.overlay_opacity !== null ? Number(item.overlay_opacity) : 40;
 
   return {
     id,
@@ -2563,6 +2623,13 @@ export function normalizeBannerItem(item, defaultOrder = 1) {
     is_active,
     open_in_new_tab,
     autoplay_duration,
+    position,
+    placement: position,
+    start_date,
+    end_date,
+    animation_type,
+    text_animation,
+    overlay_opacity,
     created_at: item.created_at || new Date().toISOString(),
     updated_at: item.updated_at || new Date().toISOString(),
   };
@@ -2589,38 +2656,67 @@ function getUnifiedBannersFromStorage() {
     if (typeof window !== 'undefined' && window.localStorage) {
       // 1. Check primary unified key
       const rawUnified = window.localStorage.getItem(UNIFIED_HERO_BANNERS_KEY);
+      let list = [];
       if (rawUnified) {
-        const parsed = JSON.parse(rawUnified);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          inMemoryHeroBanners = parsed.map((item, idx) => normalizeBannerItem(item, idx + 1));
-          return inMemoryHeroBanners;
+        try {
+          const parsed = JSON.parse(rawUnified);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            list = parsed;
+          }
+        } catch (e) {}
+      }
+
+      // 2. Check legacy promotional banners key if empty
+      if (list.length === 0) {
+        const rawLegacy = window.localStorage.getItem(LEGACY_BANNERS_KEY) || window.localStorage.getItem(LEGACY_HERO_KEY);
+        if (rawLegacy) {
+          try {
+            const parsedLegacy = JSON.parse(rawLegacy);
+            if (Array.isArray(parsedLegacy) && parsedLegacy.length > 0) {
+              list = parsedLegacy;
+            }
+          } catch (e) {}
         }
       }
 
-      // 2. Check legacy promotional banners key (where user may have saved edits like "HEAR THE DIFFERENCE")
-      const rawLegacyBanners = window.localStorage.getItem(LEGACY_BANNERS_KEY);
-      if (rawLegacyBanners) {
-        const parsedLegacy = JSON.parse(rawLegacyBanners);
-        if (Array.isArray(parsedLegacy) && parsedLegacy.length > 0) {
-          inMemoryHeroBanners = parsedLegacy.map((item, idx) => normalizeBannerItem(item, idx + 1));
-          saveUnifiedBannersToStorage(inMemoryHeroBanners);
-          return inMemoryHeroBanners;
-        }
-      }
+      // 3. Ensure Apex Campaign (slide 0) and Thunder Pro (slide 1) are always prioritized
+      const campaignSlide = INITIAL_SEED_HERO_BANNERS[0];
+      const thunderSlide = INITIAL_SEED_HERO_BANNERS[1];
 
-      // 3. Check legacy hero slides key
-      const rawLegacyHero = window.localStorage.getItem(LEGACY_HERO_KEY);
-      if (rawLegacyHero) {
-        const parsedHero = JSON.parse(rawLegacyHero);
-        if (Array.isArray(parsedHero) && parsedHero.length > 0) {
-          inMemoryHeroBanners = parsedHero.map((item, idx) => normalizeBannerItem(item, idx + 1));
-          saveUnifiedBannersToStorage(inMemoryHeroBanners);
-          return inMemoryHeroBanners;
-        }
-      }
+      // Keep user's other banners without duplicating campaign/thunder/nexus
+      const others = list.filter(
+        (b) =>
+          b.id !== 'slide-apex-campaign' &&
+          b.id !== 'slide-nexus-pro' &&
+          b.id !== 'slide-thunder-pro' &&
+          !String(b.title || '').includes('NEXUS PRO') &&
+          !String(b.mobile_image_url || '').includes('nexus') &&
+          !String(b.image_url || '').includes('thunder-pro') &&
+          !String(b.image_url || '').includes('apex-campaign')
+      );
 
-      // 4. Save default initial seed
-      saveUnifiedBannersToStorage(INITIAL_SEED_HERO_BANNERS);
+      const finalBanners = [
+        { ...campaignSlide, sort_order: 1, display_order: 1 },
+        { ...thunderSlide, sort_order: 2, display_order: 2 },
+        ...others,
+      ].map((b, idx) => {
+        const item = normalizeBannerItem(b, idx + 1);
+        item.sort_order = idx + 1;
+        item.display_order = idx + 1;
+        return item;
+      });
+
+      inMemoryHeroBanners = finalBanners;
+
+      // Sync across all keys
+      try {
+        const jsonStr = JSON.stringify(finalBanners);
+        window.localStorage.setItem(UNIFIED_HERO_BANNERS_KEY, jsonStr);
+        window.localStorage.setItem(LEGACY_BANNERS_KEY, jsonStr);
+        window.localStorage.setItem(LEGACY_HERO_KEY, jsonStr);
+      } catch (e) {}
+
+      return inMemoryHeroBanners;
     }
     return inMemoryHeroBanners;
   } catch (e) {
@@ -2772,7 +2868,19 @@ async function _fetchHeroBannersImpl(onlyActive) {
   }
 
   if (onlyActive) {
-    banners = banners.filter((b) => b.is_active !== false);
+    const now = new Date();
+    banners = banners.filter((b) => {
+      if (b.is_active === false) return false;
+      // Start date check (banner only activates when now >= start_date)
+      if (b.start_date && !isNaN(new Date(b.start_date).getTime())) {
+        if (new Date(b.start_date) > now) return false;
+      }
+      // End date check (banner expires when now > end_date)
+      if (b.end_date && !isNaN(new Date(b.end_date).getTime())) {
+        if (new Date(b.end_date) < now) return false;
+      }
+      return true;
+    });
   }
 
   return banners

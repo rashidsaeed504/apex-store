@@ -27,6 +27,15 @@ const SectionSkeleton = () => (
   </div>
 );
 
+// Slim skeleton matching the compact horizontal campaign banner
+const BannerSkeleton = () => (
+  <div className="py-2.5 sm:py-3.5 md:py-4.5 bg-[#050505]">
+    <div className="container max-w-7xl mx-auto px-3.5 sm:px-4 md:px-6 lg:px-8">
+      <div className="w-full aspect-[4.2/1] sm:aspect-[4.4/1] md:aspect-[4.5/1] rounded-[10px] sm:rounded-xl bg-white/[0.03] border border-white/5 animate-pulse" />
+    </div>
+  </div>
+);
+
 const Home = () => {
   return (
     <div className="min-h-screen bg-apex-black flex flex-col">
@@ -36,7 +45,7 @@ const Home = () => {
       <BestSellers />
 
       {/* Below the fold — loads progressively */}
-      <Suspense fallback={<SectionSkeleton />}>
+      <Suspense fallback={<BannerSkeleton />}>
         <PromotionalBanner />
       </Suspense>
       <Suspense fallback={<SectionSkeleton />}>

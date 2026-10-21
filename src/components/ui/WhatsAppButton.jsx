@@ -12,7 +12,7 @@ export default function WhatsAppButton({
   const whatsappUrl = `https://wa.me/${phoneNumber.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(defaultMessage)}`;
 
   return (
-    <div className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-40 flex items-center">
+    <div className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] right-4 sm:bottom-6 sm:right-6 z-40 flex items-center">
       {/* Floating Tooltip Label (Desktop hover) */}
       <AnimatePresence>
         {isHovered && (

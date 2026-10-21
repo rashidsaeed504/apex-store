@@ -8,18 +8,19 @@ import Footer from '../components/layout/Footer';
 import CartDrawer from '../components/layout/CartDrawer';
 import SearchOverlay from '../components/layout/SearchOverlay';
 import WhatsAppButton from '../components/ui/WhatsAppButton';
+import MobileBottomNav from '../components/layout/MobileBottomNav';
 import { useToast } from '../context/ToastContext';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { useCart } from '../context/CartContext';
 
-// ToastRenderer to display toasts from ToastContext positioned above the WhatsApp button
+// ToastRenderer to display toasts from ToastContext positioned safely above the mobile WhatsApp button & bottom nav
 function ToastRenderer() {
   const { toasts, removeToast } = useToast();
 
   return (
-    <div className="fixed bottom-20 right-4 sm:bottom-24 sm:right-6 z-50 flex flex-col gap-2 pointer-events-none">
+    <div className="fixed bottom-[calc(9.5rem+env(safe-area-inset-bottom,0px))] right-4 sm:bottom-24 sm:right-6 z-50 flex flex-col gap-2 pointer-events-none">
       <AnimatePresence>
         {toasts.map((toast) => (
           <motion.div
@@ -127,7 +128,7 @@ export default function MainLayout() {
     <div className="min-h-screen flex flex-col bg-apex-black text-white selection:bg-apex-red/30">
       <Navbar openCart={openCart} />
       
-      <main className="flex-1 w-full min-w-0 overflow-x-hidden">
+      <main className="flex-1 w-full min-w-0 overflow-x-hidden pb-6 md:pb-0">
         <PageTransition>
           <Outlet />
         </PageTransition>
@@ -139,6 +140,7 @@ export default function MainLayout() {
       <SearchOverlay />
       <WhatsAppButton />
       <ToastRenderer />
+      <MobileBottomNav />
     </div>
   );
 }
