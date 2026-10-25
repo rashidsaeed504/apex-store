@@ -14,7 +14,7 @@ const BestSellers = () => {
   }, []);
 
   return (
-    <section className="py-10 sm:py-16 md:py-24 bg-[#050505] relative z-10 border-t border-white/5">
+    <section className="py-10 sm:py-16 md:py-24 bg-[#050505] relative z-10">
       <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <ProductCarousel
           title="BEST"

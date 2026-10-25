@@ -163,12 +163,18 @@ export default function CategoriesPage() {
                       <ArrowUpRight className="w-3.5 h-3.5" />
                     </div>
 
-                    {/* Category Name & Subtitle at Left-Bottom with Breathing Room */}
+                    {/* Category Name & Subtitle at Left-Bottom with Breathing Room and Text Shadow */}
                     <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6 pb-4 sm:pb-6 flex flex-col justify-end z-10 transform group-hover:-translate-y-0.5 transition-transform duration-300 text-left">
-                      <h3 className="text-sm sm:text-base md:text-lg font-black uppercase tracking-wider text-white group-hover:text-apex-red transition-colors leading-tight line-clamp-1">
+                      <h3 
+                        style={{ textShadow: '0 2px 4px rgba(0,0,0,1), 0 4px 14px rgba(0,0,0,0.95), 0 0 24px rgba(0,0,0,0.9)' }}
+                        className="text-sm sm:text-base md:text-lg font-black uppercase tracking-wider text-white group-hover:text-apex-red transition-colors leading-tight line-clamp-1 drop-shadow-[0_2px_10px_rgba(0,0,0,0.95)]"
+                      >
                         {category.name}
                       </h3>
-                      <p className="text-[10px] sm:text-xs text-gray-300/90 font-medium mt-1 line-clamp-1 leading-snug">
+                      <p 
+                        style={{ textShadow: '0 1px 3px rgba(0,0,0,1), 0 2px 8px rgba(0,0,0,0.9)' }}
+                        className="text-[10px] sm:text-xs text-gray-200 font-medium mt-1 line-clamp-1 leading-snug drop-shadow-[0_1px_5px_rgba(0,0,0,0.9)]"
+                      >
                         {subtitle}
                       </p>
                     </div>

@@ -2429,6 +2429,8 @@ export const INITIAL_SEED_HERO_BANNERS = [
     features: ['Spatial Audio', 'Titanium Wearables', 'Fast Charge', 'Official Warranty'],
     display_order: 1,
     sort_order: 1,
+    position: 'middle',
+    placement: 'middle',
     is_active: true,
     open_in_new_tab: false,
     autoplay_duration: 5500,
@@ -2456,6 +2458,8 @@ export const INITIAL_SEED_HERO_BANNERS = [
     features: ['RGB LED Lights', 'Customized EQ Modes', 'IPX6 Splash Resistance', "Pakistan's Loudest"],
     display_order: 2,
     sort_order: 2,
+    position: 'middle',
+    placement: 'middle',
     is_active: true,
     open_in_new_tab: false,
     autoplay_duration: 5500,
@@ -2483,6 +2487,8 @@ export const INITIAL_SEED_HERO_BANNERS = [
     features: ['100% Original', 'Free Delivery', '7 Days Return', '24/7 Support'],
     display_order: 3,
     sort_order: 3,
+    position: 'hero',
+    placement: 'hero',
     is_active: true,
     open_in_new_tab: false,
     autoplay_duration: 6000,
@@ -2510,6 +2516,8 @@ export const INITIAL_SEED_HERO_BANNERS = [
     features: ['AMOLED Display', 'Titanium Build', '14-Day Battery', 'IP68 Waterproof'],
     display_order: 4,
     sort_order: 4,
+    position: 'hero',
+    placement: 'hero',
     is_active: true,
     open_in_new_tab: false,
     autoplay_duration: 6000,
@@ -2537,6 +2545,8 @@ export const INITIAL_SEED_HERO_BANNERS = [
     features: ['Ultra-Low Latency', 'Studio Audio', 'Dual Mic ANC', '1-Year Warranty'],
     display_order: 5,
     sort_order: 5,
+    position: 'hero',
+    placement: 'hero',
     is_active: true,
     open_in_new_tab: false,
     autoplay_duration: 6000,
@@ -2941,11 +2951,19 @@ export async function saveHeroBanner(bannerData) {
         subtitle: normalized.subtitle,
         badge_text: normalized.badge_text,
         image_url: normalized.image_url,
+        desktop_image_url: normalized.desktop_image_url,
+        mobile_image_url: normalized.mobile_image_url,
         button_text: normalized.button_text,
         button_url: normalized.button_url,
         open_in_new_tab: normalized.open_in_new_tab,
         display_order: normalized.display_order,
         is_active: normalized.is_active,
+        position: normalized.position,
+        placement: normalized.placement,
+        start_date: normalized.start_date,
+        end_date: normalized.end_date,
+        overlay_opacity: normalized.overlay_opacity,
+        animation_type: normalized.animation_type,
         updated_at: now,
       };
 
@@ -2974,6 +2992,8 @@ export async function saveHeroBanner(bannerData) {
         sort_order: normalized.sort_order,
         is_active: normalized.is_active,
         autoplay_duration: normalized.autoplay_duration,
+        position: normalized.position,
+        placement: normalized.placement,
         updated_at: now,
       };
 
@@ -4785,5 +4805,95 @@ export async function removeAdminUser(adminId, currentAdminEmail) {
   setLocalAdminUsers(local.filter((a) => String(a.id) !== String(adminId) && a.email?.toLowerCase() !== target?.email?.toLowerCase()));
   return true;
 }
+
+// ==========================================
+// ADMIN NOTIFICATION CENTER API
+// ==========================================
+
+const LOCAL_ADMIN_NOTIFICATIONS_KEY = 'apex_db_admin_notifications';
+
+function getLocalAdminNotifications() {
+  try {
+    const raw = localStorage.getItem(LOCAL_ADMIN_NOTIFICATIONS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return [];
+}
+
+function setLocalAdminNotifications(list) {
+  try {
+    localStorage.setItem(LOCAL_ADMIN_NOTIFICATIONS_KEY, JSON.stringify(list));
+  } catch (e) {}
+}
+
+export async function fetchAdminNotifications(limit = 100) {
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('admin_notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (!error && Array.isArray(data)) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('fetchAdminNotifications error:', err);
+    }
+  }
+  return getLocalAdminNotifications();
+}
+
+export async function markAdminNotificationRead(id) {
+  if (isSupabaseConfigured && id) {
+    try {
+      await supabase
+        .from('admin_notifications')
+        .update({ is_read: true })
+        .eq('id', id);
+    } catch (err) {
+      console.warn('markAdminNotificationRead error:', err);
+    }
+  }
+
+  const local = getLocalAdminNotifications();
+  const updated = local.map((n) => (String(n.id) === String(id) ? { ...n, is_read: true } : n));
+  setLocalAdminNotifications(updated);
+  return true;
+}
+
+export async function markAllAdminNotificationsRead() {
+  if (isSupabaseConfigured) {
+    try {
+      await supabase
+        .from('admin_notifications')
+        .update({ is_read: true })
+        .eq('is_read', false);
+    } catch (err) {
+      console.warn('markAllAdminNotificationsRead error:', err);
+    }
+  }
+
+  const local = getLocalAdminNotifications();
+  const updated = local.map((n) => ({ ...n, is_read: true }));
+  setLocalAdminNotifications(updated);
+  return true;
+}
+
+export async function deleteAdminNotification(id) {
+  if (isSupabaseConfigured && id) {
+    try {
+      await supabase
+        .from('admin_notifications')
+        .delete()
+        .eq('id', id);
+    } catch (err) {}
+  }
+  const local = getLocalAdminNotifications();
+  setLocalAdminNotifications(local.filter((n) => String(n.id) !== String(id)));
+  return true;
+}
+
 
 

@@ -16,11 +16,14 @@ import {
   X,
   RotateCcw,
   ShieldCheck,
+  Bell,
 } from 'lucide-react';
 import Logo from '../components/ui/Logo';
 import { InstagramIcon } from '../components/ui/SocialIcons';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useToast } from '../context/ToastContext';
+import NotificationDropdown from '../components/admin/NotificationDropdown';
+import { useAdminNotifications } from '../context/AdminNotificationContext';
 
 export default function AdminLayout() {
   const location = useLocation();
@@ -28,9 +31,11 @@ export default function AdminLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [adminEmail, setAdminEmail] = useState('Apex Administrator');
   const { info } = useToast();
+  const { unreadCount } = useAdminNotifications();
 
   const navItems = [
     { name: 'Dashboard', path: '/admin', icon: LayoutDashboard },
+    { name: 'Notifications', path: '/admin/notifications', icon: Bell, isNotification: true },
     { name: 'Hero Slider', path: '/admin/hero-slider', icon: Tv },
     { name: 'Banners', path: '/admin/banners', icon: ImageIcon },
     { name: 'Special Offer', path: '/admin/special-offer', icon: Flame },
@@ -121,14 +126,21 @@ export default function AdminLayout() {
                 key={item.name}
                 to={item.path}
                 onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                   isActive 
                     ? 'bg-apex-red text-white font-semibold shadow-[0_0_15px_rgba(220,38,38,0.3)]' 
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
                 }`}
               >
-                <Icon className="w-5 h-5" />
-                {item.name}
+                <div className="flex items-center gap-3">
+                  <Icon className="w-5 h-5" />
+                  <span>{item.name}</span>
+                </div>
+                {item.isNotification && unreadCount > 0 && (
+                  <span className="text-[10px] font-mono font-bold bg-apex-red text-white px-1.5 py-0.5 rounded-full shadow-[0_0_6px_rgba(220,38,38,0.6)]">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -165,7 +177,8 @@ export default function AdminLayout() {
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsSidebarOpen(true)}
-              className="lg:hidden text-gray-400 hover:text-white p-2"
+              className="lg:hidden text-gray-400 hover:text-white p-2 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+              aria-label="Open Admin Menu"
             >
               <Menu className="w-6 h-6" />
             </button>
@@ -174,8 +187,11 @@ export default function AdminLayout() {
             </h1>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 pl-4 border-l border-white/10">
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* Top Bar Notification Center Bell Dropdown */}
+            <NotificationDropdown />
+
+            <div className="flex items-center gap-3 pl-3 sm:pl-4 border-l border-white/10">
               <div className="w-8 h-8 rounded-full bg-apex-red flex items-center justify-center font-bold text-white text-xs shadow-[0_0_10px_rgba(220,38,38,0.4)] uppercase">
                 {adminEmail ? adminEmail.substring(0, 2) : 'AP'}
               </div>

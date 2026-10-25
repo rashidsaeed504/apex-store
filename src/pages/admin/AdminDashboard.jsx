@@ -18,6 +18,7 @@ import { Link } from 'react-router-dom';
 import { fetchDashboardStats, updateOrderStatus } from '../../services/api.js';
 import { formatPrice } from '../../utils/helpers.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import DashboardUnreadNotifications from '../../components/admin/DashboardUnreadNotifications';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
@@ -93,7 +94,10 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
+      {/* 0. Notifications Section: UNREAD Activity & Alerts */}
+      <DashboardUnreadNotifications />
+
       {/* Header */}
       <div>
         <h2 className="text-2xl md:text-3xl font-black uppercase tracking-wider text-white">

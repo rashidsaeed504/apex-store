@@ -48,10 +48,10 @@ export default function ProductCard({ product, className = '', disableMotion = f
 
   const cardContent = (
     <>
-      {/* Product Image Container — Compact 144px height on mobile for 2-column layout */}
+      {/* Product Image Container — Square aspect-square on mobile, height-based on desktop */}
       <Link 
         to={`/product/${productSlug}`} 
-        className="relative block w-full h-36 min-[400px]:h-40 sm:h-56 md:h-64 lg:h-72 bg-[#0a0a0a] border-b border-white/5 overflow-hidden flex-shrink-0"
+        className="relative block w-full aspect-square sm:aspect-auto sm:h-56 md:h-64 lg:h-72 bg-[#0a0a0a] border-b border-white/5 overflow-hidden flex-shrink-0"
       >
         {/* Discount Badge */}
         {Number(product.discount) > 0 && !isOutOfStock && (
@@ -105,16 +105,16 @@ export default function ProductCard({ product, className = '', disableMotion = f
           <span className="text-[9px] sm:text-xs text-gray-500 uppercase tracking-wider mb-0.5 font-medium truncate">
             {product.category || 'Tech Gear'}
           </span>
-          {/* Product Name */}
-          <h3 className="text-[12px] sm:text-base text-white font-medium line-clamp-1 mb-1 group-hover:text-apex-red transition-colors leading-tight">
+          {/* Product Name (line-clamp-2 for mobile clarity) */}
+          <h3 className="text-[12px] sm:text-base text-white font-medium line-clamp-2 mb-1 group-hover:text-apex-red transition-colors leading-tight">
             {product.name || 'Apex Product'}
           </h3>
           
-          {/* Rating */}
+          {/* Rating (Stars + Number only on mobile) */}
           <div className="flex items-center gap-1 mb-1.5">
             <Star className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 fill-yellow-500 text-yellow-500" />
             <span className="text-white text-[10px] sm:text-sm font-medium">{product.rating || '4.8'}</span>
-            <span className="text-gray-500 text-[9px] sm:text-xs">({product.reviews || '24'})</span>
+            <span className="text-gray-500 text-[9px] sm:text-xs hidden sm:inline">({product.reviews || '24'})</span>
           </div>
 
           {/* Price Section */}
@@ -140,7 +140,7 @@ export default function ProductCard({ product, className = '', disableMotion = f
         transition={{ type: "spring", stiffness: 400, damping: 17 }}
         onClick={handleAddToCart}
         disabled={isOutOfStock}
-        className={`w-full py-2 sm:py-3 border-t uppercase text-[10px] sm:text-sm font-semibold tracking-wider transition-colors mt-auto cursor-pointer ${
+        className={`w-full min-h-[38px] sm:min-h-[44px] py-2 sm:py-3 border-t uppercase text-[10px] sm:text-sm font-semibold tracking-wider transition-colors mt-auto cursor-pointer flex items-center justify-center ${
           isOutOfStock
             ? 'bg-gray-800/80 text-gray-500 border-white/5 cursor-not-allowed'
             : 'bg-apex-gray/50 border-white/5 text-white hover:bg-apex-red hover:border-apex-red'

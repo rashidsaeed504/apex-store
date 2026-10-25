@@ -454,7 +454,7 @@ export default function MobileMenu({ isOpen, onClose }) {
                   </AnimatePresence>
                 </div>
 
-                {/* Direct Links */}
+                {/* Direct Links
                 <Link
                   to="/deals"
                   onClick={onClose}
@@ -462,7 +462,7 @@ export default function MobileMenu({ isOpen, onClose }) {
                 >
                   <Tag className="w-4 h-4 text-gray-400" />
                   <span>DEALS & OFFERS</span>
-                </Link>
+                </Link> */}
 
                 <Link
                   to="/wishlist"

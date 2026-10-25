@@ -55,7 +55,7 @@ export default function AccountLayout() {
     : "Aug 2026";
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white pt-20 mt-12 sm:pt-24 md:pt-28 pb-16 sm:pb-20 select-none">
+    <div className="min-h-screen bg-[#050505] text-white pt-20 mt-12 sm:pt-24 md:pt-28 pb-24 md:pb-20 select-none">
       <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* 1. Premium Mobile & Desktop Profile Header Card */}
         <motion.div
@@ -117,11 +117,8 @@ export default function AccountLayout() {
           </div>
         </motion.div>
 
-        {/* 2. Mobile Horizontally Scrollable Tabs (Zero Page Overflow) */}
-        <div
-          className="md:hidden flex items-center gap-2 overflow-x-auto pb-2 mb-6 scroll-smooth snap-x no-scrollbar"
-          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-        >
+        {/* 2. Mobile 2-Column Tabs Grid (No Horizontal Scroll Slider) */}
+        <div className="grid grid-cols-2 gap-2 md:hidden mb-6">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -130,15 +127,15 @@ export default function AccountLayout() {
                 to={item.path}
                 end={item.end}
                 className={({ isActive }) =>
-                  `inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider whitespace-nowrap shrink-0 snap-start transition-all ${
+                  `flex items-center justify-center text-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider w-full min-h-[44px] odd:last:col-span-2 transition-all cursor-pointer ${
                     isActive
                       ? "bg-apex-red text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]"
                       : "bg-[#0D0D0D] text-gray-400 hover:text-white border border-white/5 hover:bg-white/5"
                   }`
                 }
               >
-                <Icon className="w-3.5 h-3.5 shrink-0" />
-                <span>{item.name}</span>
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="leading-tight">{item.name}</span>
               </NavLink>
             );
           })}

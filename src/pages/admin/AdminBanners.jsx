@@ -99,10 +99,30 @@ const DEFAULT_BANNER_FORM = {
 };
 
 const BANNER_POSITIONS = [
-  { id: 'middle', label: 'Middle Banner', description: 'Homepage main banner below categories' },
-  { id: 'hero', label: 'Hero Showcase', description: 'Top hero carousel banner' },
-  { id: 'announcement', label: 'Top Announcement', description: 'Header promotion ribbon' },
-  { id: 'bottom', label: 'Pre-Footer Banner', description: 'Above footer promotion banner' },
+  { 
+    id: 'middle', 
+    label: 'Below Categories', 
+    description: 'Promotional banner directly below Shop by Category section',
+    badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+  },
+  { 
+    id: 'hero', 
+    label: 'Hero Showcase', 
+    description: 'Top hero carousel banner slider at page top',
+    badgeClass: 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+  },
+  { 
+    id: 'announcement', 
+    label: 'Top Announcement', 
+    description: 'Header notification / promotion ribbon',
+    badgeClass: 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+  },
+  { 
+    id: 'bottom', 
+    label: 'Pre-Footer Banner', 
+    description: 'Above footer promotion banner',
+    badgeClass: 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+  },
 ];
 
 /**
@@ -449,7 +469,7 @@ function AdminBannersContent() {
             <span className="text-[11px] text-gray-500 font-mono uppercase mr-1">Position:</span>
             {[
               { id: 'all', label: 'All Placements' },
-              { id: 'middle', label: 'Middle Banner' },
+              { id: 'middle', label: 'Below Categories' },
               { id: 'hero', label: 'Hero Showcase' },
               { id: 'announcement', label: 'Top Announcement' },
               { id: 'bottom', label: 'Pre-Footer' },
@@ -558,7 +578,7 @@ function AdminBannersContent() {
                         </span>
 
                         {/* Position Badge */}
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${positionObj.badgeClass || 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
                           {positionObj.label}
                         </span>
 
@@ -742,6 +762,15 @@ function AdminBannersContent() {
                     );
                   })}
                 </div>
+
+                {(formData.position || 'middle') === 'middle' && (
+                  <div className="mt-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5 text-left">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-emerald-300/90 leading-relaxed">
+                      <strong>Homepage Category Banner:</strong> This promotional banner will appear directly at the bottom of the &quot;Shop by Category&quot; section on the storefront homepage.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Media & Responsive Images */}

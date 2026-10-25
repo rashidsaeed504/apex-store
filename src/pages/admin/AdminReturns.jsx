@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   RotateCcw,
@@ -58,12 +59,13 @@ const STATUS_TABS = [
 
 export default function AdminReturns() {
   const { success: toastSuccess, error: toastError } = useToast();
+  const [searchParams] = useSearchParams();
 
   const [activeView, setActiveView] = useState('returns'); // 'returns' | 'settings'
   const [returns, setReturns] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedReturn, setSelectedReturn] = useState(null);
 
@@ -113,6 +115,28 @@ export default function AdminReturns() {
     window.addEventListener('apex_returns_updated', handleUpdate);
     return () => window.removeEventListener('apex_returns_updated', handleUpdate);
   }, []);
+
+  useEffect(() => {
+    const q = searchParams.get('search');
+    if (q) {
+      setSearchQuery(q);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const q = (searchParams.get('search') || '').trim().toLowerCase();
+    if (q && returns.length > 0 && !selectedReturn) {
+      const match = returns.find(
+        (r) =>
+          String(r?.return_number || '').toLowerCase() === q ||
+          String(r?.order_number || '').toLowerCase() === q ||
+          String(r?.id || '').toLowerCase() === q
+      );
+      if (match) {
+        openDetailModal(match);
+      }
+    }
+  }, [searchParams, returns]);
 
   const openDetailModal = (ret) => {
     setSelectedReturn(ret);

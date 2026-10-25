@@ -3,162 +3,14 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import ProductCard from './ProductCard';
 
-// Mobile Native Scroll Container with Smooth Auto-Scroll, Press & Hold Pause, and Left/Right Touch Swiping
-// ── Performance: IntersectionObserver pauses RAF loop when offscreen ──
-function MobileCarouselTrack({ products }) {
-  const scrollContainerRef = useRef(null);
-  const isInteractingRef = useRef(false);
-  const isVisibleRef = useRef(false);
-  const resumeTimerRef = useRef(null);
-  const animFrameRef = useRef(null);
-  const accumulatedScrollRef = useRef(0);
-  const lastTimestampRef = useRef(null);
-
-  // Speed in pixels per second: ~24px/sec (~16-18s per full 2-card pass)
-  const SCROLL_SPEED = 24;
-
-  // Duplicate product list to create a seamless wrap-around loop
-  let baseList = [...products];
-  while (baseList.length < 8 && products.length > 0) {
-    baseList = [...baseList, ...products];
-  }
-  const displayProducts = [...baseList, ...baseList];
-
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    let isMounted = true;
-
-    // IntersectionObserver: only run RAF when visible in viewport
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        isVisibleRef.current = entry.isIntersecting;
-        if (entry.isIntersecting) {
-          // Reset timestamp so delta calculation doesn't include paused time
-          lastTimestampRef.current = null;
-        }
-      },
-      { threshold: 0.1 }
-    );
-    observer.observe(container);
-
-    const step = (timestamp) => {
-      if (!isMounted) return;
-
-      // Skip work when offscreen
-      if (!isVisibleRef.current) {
-        animFrameRef.current = requestAnimationFrame(step);
-        return;
-      }
-
-      if (!lastTimestampRef.current) {
-        lastTimestampRef.current = timestamp;
-      }
-      const deltaSeconds = Math.min((timestamp - lastTimestampRef.current) / 1000, 0.1);
-      lastTimestampRef.current = timestamp;
-
-      if (!isInteractingRef.current && container) {
-        const halfWidth = container.scrollWidth / 2;
-        if (halfWidth > 0) {
-          accumulatedScrollRef.current += SCROLL_SPEED * deltaSeconds;
-          
-          if (accumulatedScrollRef.current >= halfWidth) {
-            accumulatedScrollRef.current -= halfWidth;
-          } else if (accumulatedScrollRef.current < 0) {
-            accumulatedScrollRef.current += halfWidth;
-          }
-
-          container.scrollLeft = accumulatedScrollRef.current;
-        }
-      }
-
-      animFrameRef.current = requestAnimationFrame(step);
-    };
-
-    animFrameRef.current = requestAnimationFrame(step);
-
-    return () => {
-      isMounted = false;
-      observer.disconnect();
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-      lastTimestampRef.current = null;
-    };
-  }, [products]);
-
-  // Keep accumulator in sync when user scrolls natively
-  const handleScroll = () => {
-    if (scrollContainerRef.current) {
-      const { scrollLeft, scrollWidth } = scrollContainerRef.current;
-      const halfWidth = scrollWidth / 2;
-      
-      if (halfWidth > 0) {
-        if (scrollLeft >= halfWidth * 1.5) {
-          scrollContainerRef.current.scrollLeft = scrollLeft - halfWidth;
-        } else if (scrollLeft <= 5) {
-          scrollContainerRef.current.scrollLeft = scrollLeft + halfWidth;
-        }
-      }
-
-      accumulatedScrollRef.current = scrollContainerRef.current.scrollLeft;
-    }
-  };
-
-  const handlePointerDown = () => {
-    isInteractingRef.current = true;
-    if (resumeTimerRef.current) {
-      clearTimeout(resumeTimerRef.current);
-      resumeTimerRef.current = null;
-    }
-    if (scrollContainerRef.current) {
-      accumulatedScrollRef.current = scrollContainerRef.current.scrollLeft;
-    }
-  };
-
-  const handlePointerUp = () => {
-    if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    // Smoothly resume auto-scroll after a short settling delay
-    resumeTimerRef.current = setTimeout(() => {
-      if (scrollContainerRef.current) {
-        accumulatedScrollRef.current = scrollContainerRef.current.scrollLeft;
-      }
-      isInteractingRef.current = false;
-      lastTimestampRef.current = null;
-    }, 700);
-  };
-
-  return (
-    <div
-      ref={scrollContainerRef}
-      onScroll={handleScroll}
-      onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-      onTouchStart={handlePointerDown}
-      onTouchEnd={handlePointerUp}
-      onTouchCancel={handlePointerUp}
-      className="flex items-center gap-3 py-2 overflow-x-auto select-none touch-pan-x hide-scrollbar w-full"
-      style={{
-        scrollbarWidth: 'none',
-        msOverflowStyle: 'none',
-        WebkitOverflowScrolling: 'touch',
-        touchAction: 'pan-x pan-y',
-      }}
-    >
-      {displayProducts.map((product, idx) => (
-        <div
-          key={`mobile-${product?.id || idx}-${idx}`}
-          className="shrink-0 w-[calc(50vw-18px)]"
-        >
-          <ProductCard product={product} disableMotion={true} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-export default function ProductCarousel({ products = [], title = '', highlightTitle = '', showViewAll = false, viewAllLink = '/shop' }) {
+export default function ProductCarousel({ 
+  products = [], 
+  title = '', 
+  highlightTitle = '', 
+  showViewAll = false, 
+  viewAllLink = '/shop',
+  mobileLimit = 6
+}) {
   const scrollRef = useRef(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
@@ -199,7 +51,7 @@ export default function ProductCarousel({ products = [], title = '', highlightTi
           {showViewAll && (
             <Link
               to={viewAllLink}
-              className="text-xs sm:text-sm font-bold text-gray-400 hover:text-apex-red transition-colors uppercase tracking-wider flex items-center gap-1.5"
+              className="hidden md:flex text-xs sm:text-sm font-bold text-gray-400 hover:text-apex-red transition-colors uppercase tracking-wider items-center gap-1.5"
             >
               <span>VIEW ALL</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -208,9 +60,30 @@ export default function ProductCarousel({ products = [], title = '', highlightTi
         </div>
       )}
 
-      {/* MOBILE ONLY (md:hidden): Native Horizontal Scroll with Auto-Scroll + Touch Swipe + Pause on Hold */}
-      <div className="block md:hidden w-full overflow-hidden relative">
-        <MobileCarouselTrack products={products} />
+      {/* MOBILE ONLY (md:hidden): 2-Column Grid with 4 or 6 products + Full-Width "View All" Button */}
+      <div className="block md:hidden w-full">
+        <div className="grid grid-cols-2 gap-3">
+          {products.slice(0, mobileLimit).map((product, idx) => (
+            <div key={`mobile-${product?.id || idx}`} className="w-full">
+              <ProductCard product={product} />
+            </div>
+          ))}
+        </div>
+
+        {showViewAll && (
+          <div className="mt-4 pt-1 flex justify-center">
+            <Link
+              to={viewAllLink}
+              className="w-full min-h-[44px] text-center text-xs font-bold uppercase tracking-wider text-white transition-all items-center flex justify-center gap-2 group shadow-sm "
+
+            >
+             <div className="flex gap-2 relative">
+               <span className="hover:after:w-full  after:content-[''] after:absolute after:w-0 after:h-[1px] after:bg-apex-red after:bottom-0 after:left-0 after:transition-all after:duration-300 after:translate-x" >VIEW ALL {title} {highlightTitle}</span>
+              <ArrowRight className="w-3.5 h-3.5 text-apex-red group-hover:translate-x-1 transition-transform" />
+             </div>
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* DESKTOP ONLY (hidden md:block): Carousel with Navigation Arrows */}

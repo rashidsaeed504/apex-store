@@ -26,10 +26,28 @@ const FALLBACK_BANNERS = [
   },
 ];
 
-export default function PromotionalBanner() {
+export default function PromotionalBanner({ position = "middle", className = "" }) {
+  const filterBanners = useCallback(
+    (list) => {
+      if (!Array.isArray(list)) return [];
+      const targetPos = (position || "middle").toLowerCase();
+      return list.filter((b) => {
+        if (b.is_active === false) return false;
+        const bPos = (b.position || b.placement || "middle").toLowerCase();
+        if (targetPos === "middle") {
+          return bPos === "middle" || bPos === "below_categories" || !b.position;
+        }
+        return bPos === targetPos;
+      });
+    },
+    [position]
+  );
+
   const [banners, setBanners] = useState(() => {
     const initial = getInitialHeroSlides();
-    return Array.isArray(initial) && initial.length > 0 ? initial : FALLBACK_BANNERS;
+    const filtered = filterBanners(initial);
+    if (filtered.length > 0) return filtered;
+    return position === "middle" ? FALLBACK_BANNERS : [];
   });
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -53,8 +71,15 @@ export default function PromotionalBanner() {
     async function load() {
       try {
         const data = await fetchBanners(true);
-        if (isMounted && Array.isArray(data) && data.length > 0) {
-          setBanners(data);
+        if (isMounted && Array.isArray(data)) {
+          const filtered = filterBanners(data);
+          if (filtered.length > 0) {
+            setBanners(filtered);
+          } else if (position === "middle") {
+            setBanners(FALLBACK_BANNERS);
+          } else {
+            setBanners([]);
+          }
         }
       } catch (err) {
         console.warn("Failed to load promotional banners:", err);
@@ -72,7 +97,7 @@ export default function PromotionalBanner() {
       isMounted = false;
       window.removeEventListener("apex_banners_updated", handleUpdate);
     };
-  }, []);
+  }, [filterBanners, position]);
 
   const totalBanners = banners.length;
 
@@ -236,7 +261,7 @@ export default function PromotionalBanner() {
 
   return (
     <section
-      className="py-2.5 sm:py-3.5 md:py-4.5 bg-[#050505] relative z-10 select-none"
+      className={`pt-2 pb-8 sm:pb-12 md:pb-14 bg-[#050505] relative z-10 select-none ${className}`}
       aria-label="Promotional Campaign Banner"
     >
       <div className="container max-w-7xl mx-auto px-3.5 sm:px-4 md:px-6 lg:px-8">
@@ -250,13 +275,13 @@ export default function PromotionalBanner() {
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          className="relative w-full aspect-[4.2/1] sm:aspect-[4.4/1] md:aspect-[4.5/1] rounded-[10px] sm:rounded-xl border border-white/10 hover:border-white/20 bg-[#070709] overflow-hidden shadow-[0_4px_25px_rgba(0,0,0,0.6)] group transition-all duration-300 cursor-pointer"
+          className="relative w-full aspect-[3.4/1] sm:aspect-[4.2/1] md:aspect-[4.5/1] rounded-[14px] sm:rounded-2xl border border-white/10 hover:border-white/20 bg-[#070709] overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.7)] group transition-all duration-300 cursor-pointer"
           style={{ touchAction: "pan-y" }}
           role="region"
           aria-label="Promotional campaign banner"
         >
           {/* Subtle Corner Vignette & Ambient Rim Glow */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-black/10 pointer-events-none z-10" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-black/10 pointer-events-none z-10" />
 
           {/* ── Slide Track ── */}
           <div className="relative w-full h-full">
@@ -277,6 +302,16 @@ export default function PromotionalBanner() {
 
               const percentOffset = offset * 100;
               const dragPx = isActive || isNear ? dragOffset : 0;
+
+              const isPrebakedGraphic =
+                desktopImage.includes("apex-campaign") ||
+                desktopImage.includes("thunder-pro") ||
+                banner.id === "slide-apex-campaign" ||
+                banner.id === "banner-apex-campaign" ||
+                banner.id === "slide-thunder-pro" ||
+                banner.id === "banner-thunder-pro";
+
+              const showTextOverlay = !isPrebakedGraphic && Boolean(banner.title && banner.title.trim());
 
               return (
                 <div
@@ -311,6 +346,38 @@ export default function PromotionalBanner() {
                       }}
                     />
                   </picture>
+
+                  {/* Dynamic Typography & CTA Overlay for custom admin-created banners */}
+                  {showTextOverlay && (
+                    <div
+                      className="absolute inset-0 flex flex-col justify-center px-5 sm:px-10 md:px-14 text-left pointer-events-none z-10"
+                      style={{
+                        backgroundColor: `rgba(0,0,0,${
+                          (banner.overlay_opacity !== undefined ? banner.overlay_opacity : 45) / 100
+                        })`,
+                      }}
+                    >
+                      {banner.badge_text && (
+                        <span className="inline-block px-2.5 py-0.5 rounded-full bg-apex-red text-white text-[9px] sm:text-xs font-bold uppercase tracking-wider w-fit mb-1.5 sm:mb-2 shadow-[0_0_12px_rgba(220,38,38,0.5)]">
+                          {banner.badge_text}
+                        </span>
+                      )}
+                      <h3 className="text-white font-black text-sm sm:text-2xl md:text-3xl uppercase tracking-tight leading-tight line-clamp-2 max-w-xl drop-shadow-md">
+                        {banner.title}
+                      </h3>
+                      {banner.subtitle && (
+                        <p className="text-gray-300 text-[10px] sm:text-xs md:text-sm line-clamp-1 sm:line-clamp-2 mt-0.5 sm:mt-1 max-w-lg font-medium drop-shadow">
+                          {banner.subtitle}
+                        </p>
+                      )}
+                      <div className="mt-2 sm:mt-3 pointer-events-auto">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-lg bg-apex-red hover:bg-red-700 text-white font-bold text-[10px] sm:text-xs uppercase tracking-wider shadow-lg transition-transform hover:scale-105">
+                          <span>{banner.button_text || "SHOP NOW"}</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

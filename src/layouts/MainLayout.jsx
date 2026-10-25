@@ -128,7 +128,7 @@ export default function MainLayout() {
     <div className="min-h-screen flex flex-col bg-apex-black text-white selection:bg-apex-red/30">
       <Navbar openCart={openCart} />
       
-      <main className="flex-1 w-full min-w-0 overflow-x-hidden pb-6 md:pb-0">
+      <main className="flex-1 w-full min-w-0 overflow-x-hidden pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:pb-0">
         <PageTransition>
           <Outlet />
         </PageTransition>

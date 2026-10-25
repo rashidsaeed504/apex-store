@@ -212,7 +212,10 @@ export default function Hero() {
   }
 
   return (
-    <section className="relative w-full bg-[#050505] bg-[radial-gradient(ellipse_at_top,_rgba(220,38,38,0.12),transparent_70%)] overflow-hidden pt-20 sm:pt-24 lg:pt-26 pb-6 sm:pb-8">
+    <section 
+      className="relative w-full bg-[#050505] bg-[radial-gradient(ellipse_at_top,_rgba(220,38,38,0.12),transparent_70%)] overflow-hidden pb-6 sm:pb-8"
+      style={{ paddingTop: 'calc(var(--navbar-height, 112px) + 1.75rem)' }}
+    >
       <div className="container max-w-7xl mx-auto px-4 sm:px-5 md:px-6 lg:px-8">
         {/* ── Main Banner Slider Window ── */}
         <div

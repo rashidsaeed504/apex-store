@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ShoppingBag, 
@@ -16,9 +17,10 @@ import { formatPrice } from '../../utils/helpers';
 import { useToast } from '../../context/ToastContext';
 
 export default function AdminOrders() {
+  const [searchParams] = useSearchParams();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedOrder, setSelectedOrder] = useState(null);
 
@@ -34,6 +36,27 @@ export default function AdminOrders() {
   useEffect(() => {
     loadOrders();
   }, []);
+
+  useEffect(() => {
+    const q = searchParams.get('search');
+    if (q) {
+      setSearchQuery(q);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const q = (searchParams.get('search') || '').trim().toLowerCase();
+    if (q && orders.length > 0 && !selectedOrder) {
+      const match = orders.find(
+        (o) =>
+          String(o?.order_number || '').toLowerCase() === q ||
+          String(o?.id || '').toLowerCase() === q
+      );
+      if (match) {
+        setSelectedOrder(match);
+      }
+    }
+  }, [searchParams, orders]);
 
   const handleStatusChange = async (order, newStatus) => {
     await updateOrderStatus(order?.id, newStatus, order?.order_number);

@@ -8,6 +8,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import Logo from "../ui/Logo";
 import MobileMenu from "./MobileMenu";
+import AnnouncementBar from "./AnnouncementBar";
 import { fetchActiveCategoriesAndSubcategories } from "../../services/api.js";
 import { gsap, useGSAP, isReducedMotion } from "../../lib/motion";
 
@@ -44,7 +45,7 @@ export default function Navbar({ openCart }) {
 
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 40) {
+      if (window.scrollY > 20) {
         setIsScrolled(true);
       } else {
         setIsScrolled(false);
@@ -53,6 +54,28 @@ export default function Navbar({ openCart }) {
 
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Measure header height and expose as CSS variable to prevent layout overlap
+  useEffect(() => {
+    const updateNavbarHeight = () => {
+      if (headerRef.current) {
+        const height = headerRef.current.offsetHeight;
+        if (height > 0) {
+          document.documentElement.style.setProperty('--navbar-height', `${height}px`);
+        }
+      }
+    };
+
+    updateNavbarHeight();
+    const timer = setTimeout(updateNavbarHeight, 100);
+    window.addEventListener('resize', updateNavbarHeight);
+    window.addEventListener('apex_announcement_toggled', updateNavbarHeight);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateNavbarHeight);
+      window.removeEventListener('apex_announcement_toggled', updateNavbarHeight);
+    };
   }, []);
 
   // Close dropdown on route change or click outside
@@ -90,7 +113,6 @@ export default function Navbar({ openCart }) {
     { name: "Home", path: "/" },
     { name: "Shop", path: "/shop" },
     { name: "Categories", path: "/categories", hasDropdown: true },
-    { name: "Deals", path: "/deals" },
     { name: "Orders", path: "/orders" },
     { name: "About", path: "/about" },
   ];
@@ -105,11 +127,14 @@ export default function Navbar({ openCart }) {
         ref={headerRef}
         className={`fixed top-0 w-full z-40 transition-all duration-300 ${
           isScrolled
-            ? "bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 py-3.5 shadow-[0_10px_30px_rgba(0,0,0,0.8)]"
-            : "bg-transparent py-5"
+            ? "bg-[#050505]/95 backdrop-blur-xl border-b border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.8)]"
+            : "bg-[#050505]/85 sm:bg-[#050505]/40 backdrop-blur-md border-b border-white/5"
         }`}
       >
-        <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <AnnouncementBar />
+        <div className={`container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 transition-all duration-300 ${
+          isScrolled ? "py-2.5 sm:py-3.5" : "py-3 sm:py-5"
+        }`}>
           <div className="flex items-center justify-between">
             {/* Left: Mobile Hamburger & Brand Logo */}
             <div className="nav-stagger-item flex items-center gap-3 sm:gap-4 shrink-0">

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { WishlistProvider } from './context/WishlistContext';
@@ -62,6 +62,8 @@ import AdminReviews from './pages/admin/AdminReviews';
 import AdminCustomers from './pages/admin/AdminCustomers';
 import AdminSocialGallery from './pages/admin/AdminSocialGallery';
 import AdminUsers from './pages/admin/AdminUsers';
+import AdminNotifications from './pages/admin/AdminNotifications';
+import { AdminNotificationProvider } from './context/AdminNotificationContext';
 
 export default function App() {
   return (
@@ -126,20 +128,23 @@ export default function App() {
 
                   {/* Protected Admin Routes */}
                   <Route element={<AdminGuard />}>
-                    <Route path="/admin" element={<AdminLayout />}>
-                      <Route index element={<AdminDashboard />} />
-                      <Route path="hero-slider" element={<AdminHeroSlider />} />
-                      <Route path="banners" element={<AdminBanners />} />
-                      <Route path="special-offer" element={<AdminSpecialOffer />} />
-                      <Route path="social-gallery" element={<AdminSocialGallery />} />
-                      <Route path="products" element={<AdminProducts />} />
-                      <Route path="categories" element={<AdminCategories />} />
-                      <Route path="orders" element={<AdminOrders />} />
-                      <Route path="returns" element={<AdminReturns />} />
-                      <Route path="reviews" element={<AdminReviews />} />
-                      <Route path="customers" element={<AdminCustomers />} />
-                      <Route path="team" element={<AdminUsers />} />
-                      <Route path="users" element={<AdminUsers />} />
+                    <Route element={<AdminNotificationProvider><Outlet /></AdminNotificationProvider>}>
+                      <Route path="/admin" element={<AdminLayout />}>
+                        <Route index element={<AdminDashboard />} />
+                        <Route path="notifications" element={<AdminNotifications />} />
+                        <Route path="hero-slider" element={<AdminHeroSlider />} />
+                        <Route path="banners" element={<AdminBanners />} />
+                        <Route path="special-offer" element={<AdminSpecialOffer />} />
+                        <Route path="social-gallery" element={<AdminSocialGallery />} />
+                        <Route path="products" element={<AdminProducts />} />
+                        <Route path="categories" element={<AdminCategories />} />
+                        <Route path="orders" element={<AdminOrders />} />
+                        <Route path="returns" element={<AdminReturns />} />
+                        <Route path="reviews" element={<AdminReviews />} />
+                        <Route path="customers" element={<AdminCustomers />} />
+                        <Route path="team" element={<AdminUsers />} />
+                        <Route path="users" element={<AdminUsers />} />
+                      </Route>
                     </Route>
                   </Route>
                 </Routes>
